@@ -1,0 +1,12 @@
+# isp-start-day — markdown + Node companion. No build step; pack copies the
+# source into dist/. node pinned so the companion runs the same everywhere.
+[tools]
+node = "22"
+
+[tasks.build]
+description = "Pack SKILL.md + scripts -> dist/isp-start-day"
+run = "node ../../scripts/pack.mjs"
+
+[tasks.verify]
+description = "Validate SKILL.md frontmatter"
+run = "node ../../scripts/check.mjs"

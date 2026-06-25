@@ -1,0 +1,61 @@
+# isp-insoft-ai-skills — root config.
+#
+# mise's job here: pin RUNTIMES and be the task entrypoint. It does NOT resolve
+# a skill's own dependency graph — that stays with the skill's package manager
+# (maven for fxdriver). Per-skill mise.toml (e.g. skills/fxdriver) adds the
+# tools that skill needs to build. Config merges down the tree.
+#
+# This is a mise MONOREPO root: each skill's tasks are addressable as
+# //skills/<name>:<task>, and running one auto-activates that skill's [tools]
+# (java for fxdriver) — no -C delegation. //skills/...:<task> fans out to every
+# skill that defines <task>. config_roots must be listed (auto-discovery is
+# deprecated). The `...` recursive token is the wildcard — NOT `*`.
+monorepo_root = true
+
+[monorepo]
+config_roots = ["skills/*"]
+
+[tools]
+node = "22" # runs scripts/skills.mjs (and isp-start-day at runtime)
+dprint = "0.54.0" # fmt: markdown (+frontmatter), json, toml
+biome = "2.4.15" # fmt + lint: js/mjs
+
+[tasks.list]
+description = "List skills: kind, capability, build state, harness targets"
+run = "node scripts/skills.mjs list"
+
+[tasks.build]
+description = "Build all skills into dist/<name>/. One skill: mise run //skills/fxdriver:build"
+run = "mise run //skills/...:build"
+
+[tasks.verify]
+description = "Full check per skill (thorough). One skill: mise run //skills/fxdriver:verify"
+run = "mise run //skills/...:verify"
+
+[tasks.fmt]
+description = "Format md/json/toml (dprint) + js (biome), then any skill's own fmt"
+run = [
+  "dprint fmt",
+  "biome check --write .",
+  "mise run //skills/...:fmt",
+]
+
+[tasks.lint]
+description = "Lint md/json/toml + js (read-only), then any skill's own lint. Fails on issues."
+run = [
+  "dprint check",
+  "biome check .",
+  "mise run //skills/...:lint",
+]
+
+[tasks.status]
+description = "Drift per skill+harness: current | STALE | not-installed | ORPHAN. e.g. mise run status -- --harness claude"
+run = "node scripts/skills.mjs status"
+
+[tasks.install]
+description = "Install into a harness. e.g. mise run install -- --harness claude"
+run = "node scripts/skills.mjs install"
+
+[tasks.uninstall]
+description = "Remove from a harness. e.g. mise run uninstall -- fxdriver --harness claude"
+run = "node scripts/skills.mjs uninstall"

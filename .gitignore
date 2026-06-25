@@ -1,0 +1,10 @@
+# Build outputs — never committed. Reproduced from source via `mise run build`.
+# Each skill emits skills/<name>/dist/<name>/.
+dist/
+
+# Per-skill build artifacts.
+target/
+node_modules/
+
+# mise local state
+.mise.local.toml

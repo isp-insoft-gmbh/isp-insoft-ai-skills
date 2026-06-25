@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>net.bugabinga</groupId>
+  <artifactId>fxdriver</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <packaging>jar</packaging>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <maven.compiler.release>21</maven.compiler.release>
+    <javafx.version>21.0.7</javafx.version>
+    <junit.jupiter.version>6.1.0</junit.jupiter.version>
+    <maven.antrun.plugin.version>3.2.0</maven.antrun.plugin.version>
+    <maven.compiler.plugin.version>4.0.0-beta-4</maven.compiler.plugin.version>
+    <maven.enforcer.plugin.version>3.6.3</maven.enforcer.plugin.version>
+    <maven.jar.plugin.version>3.5.0</maven.jar.plugin.version>
+    <spotless.maven.plugin.version>3.6.0</spotless.maven.plugin.version>
+    <maven.surefire.plugin.version>3.6.0-M1</maven.surefire.plugin.version>
+    <maven.failsafe.plugin.version>3.6.0-M1</maven.failsafe.plugin.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.openjfx</groupId>
+      <artifactId>javafx-controls</artifactId>
+      <version>${javafx.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.openjfx</groupId>
+      <artifactId>javafx-web</artifactId>
+      <version>${javafx.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${junit.jupiter.version}</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <finalName>fxdriver</finalName>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <version>${maven.enforcer.plugin.version}</version>
+        <executions>
+          <execution>
+            <id>enforce</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <requireMavenVersion>
+                  <version>[4.0.0-rc-5,)</version>
+                </requireMavenVersion>
+                <requireJavaVersion>
+                  <version>[21,)</version>
+                </requireJavaVersion>
+                <dependencyConvergence/>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>${maven.compiler.plugin.version}</version>
+        <configuration>
+          <showWarnings>true</showWarnings>
+          <failOnWarning>true</failOnWarning>
+          <compilerArgs>
+            <arg>-Xlint:all</arg>
+            <arg>-Werror</arg>
+            <arg>--add-modules</arg>
+            <arg>jdk.attach,java.instrument,java.net.http</arg>
+          </compilerArgs>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>${maven.surefire.plugin.version}</version>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
+        <version>${maven.failsafe.plugin.version}</version>
+        <executions>
+          <execution>
+            <goals>
+              <goal>integration-test</goal>
+              <goal>verify</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>com.diffplug.spotless</groupId>
+        <artifactId>spotless-maven-plugin</artifactId>
+        <version>${spotless.maven.plugin.version}</version>
+        <configuration>
+          <java>
+            <googleJavaFormat>
+              <version>1.27.0</version>
+              <style>AOSP</style>
+              <reflowLongStrings>true</reflowLongStrings>
+            </googleJavaFormat>
+            <removeUnusedImports/>
+            <formatAnnotations/>
+          </java>
+          <pom>
+            <sortPom/>
+          </pom>
+        </configuration>
+        <executions>
+          <execution>
+            <id>spotless-check</id>
+            <goals>
+              <goal>check</goal>
+            </goals>
+            <phase>verify</phase>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>${maven.jar.plugin.version}</version>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-antrun-plugin</artifactId>
+        <version>${maven.antrun.plugin.version}</version>
+        <executions>
+          <execution>
+            <id>trim-runtime-jar</id>
+            <goals>
+              <goal>run</goal>
+            </goals>
+            <phase>package</phase>
+            <configuration>
+              <target>
+                <jar destfile="${project.build.directory}/${project.build.finalName}.jar">
+                  <manifest>
+                    <attribute name="Main-Class" value="fxdriver.FxDriver"/>
+                    <attribute name="Agent-Class" value="fxdriver.FxDriverAgent"/>
+                    <attribute name="Premain-Class" value="fxdriver.FxDriverAgent"/>
+                    <attribute name="Can-Redefine-Classes" value="false"/>
+                    <attribute name="Can-Retransform-Classes" value="false"/>
+                    <attribute name="Implementation-Title" value="${project.artifactId}"/>
+                    <attribute name="Implementation-Version" value="${project.version}"/>
+                  </manifest>
+                  <fileset dir="${project.build.outputDirectory}"/>
+                </jar>
+              </target>
+            </configuration>
+          </execution>
+          <execution>
+            <id>package-skill</id>
+            <goals>
+              <goal>run</goal>
+            </goals>
+            <phase>package</phase>
+            <configuration>
+              <target>
+                <delete dir="${project.build.directory}/fxdriver"/>
+                <mkdir dir="${project.build.directory}/fxdriver"/>
+                <copy todir="${project.build.directory}/fxdriver">
+                  <fileset dir="${project.basedir}/src/main/markdown/fxdriver"/>
+                  <filterset>
+                    <filter token="fxdriver.skill.jar" value="fxdriver.jar"/>
+                    <filter token="project.version" value="${project.version}"/>
+                    <filter token="maven.compiler.release" value="${maven.compiler.release}"/>
+                    <filter token="javafx.version" value="${javafx.version}"/>
+                  </filterset>
+                </copy>
+                <copy file="${project.build.directory}/${project.build.finalName}.jar" todir="${project.build.directory}/fxdriver"/>
+                <zip basedir="${project.build.directory}" destfile="${project.build.directory}/fxdriver-skill.zip" includes="fxdriver/**"/>
+              </target>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>
