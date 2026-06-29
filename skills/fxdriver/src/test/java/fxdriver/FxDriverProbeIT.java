@@ -12,8 +12,10 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 
@@ -95,7 +97,7 @@ final class FxDriverProbeIT {
                             .redirectOutput(out.resolve("attach.out").toFile())
                             .redirectError(out.resolve("attach.err").toFile())
                             .start();
-            assertTrue(attach.waitFor(Duration.ofSeconds(20)));
+            assertTrue(attach.waitFor(20, TimeUnit.SECONDS));
             assertEquals(0, attach.exitValue(), Files.readString(out.resolve("attach.err")));
             final var endpoint = waitForEndpoint(out.resolve("attach.out"));
             assertTrue(
@@ -447,17 +449,21 @@ final class FxDriverProbeIT {
     }
 
     private static java.util.List<String> probeCommand() {
-        return java.util.List.of(
-                java(),
-                "--enable-native-access=javafx.graphics",
-                "--sun-misc-unsafe-memory-access=allow",
-                "--module-path",
-                javafxModulePath(),
-                "--add-modules",
-                "javafx.controls,javafx.web",
-                "-cp",
-                testClasspath(),
-                "fxdriver.FxDriverProbeApp");
+        final var command = new ArrayList<String>();
+        command.add(java());
+        addProbeJvmArgs(command);
+        command.add("--enable-native-access=javafx.graphics");
+        if (Runtime.version().feature() >= 24) {
+            command.add("--sun-misc-unsafe-memory-access=allow");
+        }
+        command.add("--module-path");
+        command.add(javafxModulePath());
+        command.add("--add-modules");
+        command.add("javafx.controls,javafx.web,jdk.jsobject");
+        command.add("-cp");
+        command.add(testClasspath());
+        command.add("fxdriver.FxDriverProbeApp");
+        return command;
     }
 
     private static Endpoint waitForEndpoint(final Path output) throws Exception {
@@ -552,11 +558,11 @@ final class FxDriverProbeIT {
     private static void destroy(final Process process) throws InterruptedException {
         process.descendants().forEach(child -> child.destroyForcibly());
         process.destroy();
-        process.waitFor(Duration.ofSeconds(5));
+        process.waitFor(5, TimeUnit.SECONDS);
         if (process.isAlive()) {
             process.descendants().forEach(child -> child.destroyForcibly());
             process.destroyForcibly();
-            process.waitFor(Duration.ofSeconds(10));
+            process.waitFor(10, TimeUnit.SECONDS);
         }
         process.descendants().forEach(child -> child.destroyForcibly());
         assertFalse(process.isAlive());
@@ -585,7 +591,7 @@ final class FxDriverProbeIT {
         final var out = new StringBuilder();
         for (final var item :
                 System.getProperty("java.class.path").split(Pattern.quote(separator))) {
-            if (!item.contains("javafx-")) {
+            if (!item.contains("javafx-") && !item.contains("jdk-jsobject")) {
                 continue;
             }
             if (!out.isEmpty()) {
@@ -599,6 +605,23 @@ final class FxDriverProbeIT {
     private static String java() {
         return Path.of(System.getProperty("java.home"), "bin", isWindows() ? "java.exe" : "java")
                 .toString();
+    }
+
+    private static void addProbeJvmArgs(final List<String> command) {
+        final var args = System.getProperty("fxdriver.probe.jvmargs", "").strip();
+        if (!args.isBlank()) {
+            command.addAll(List.of(args.split("\\s+")));
+        }
+        addProbeSystemProperty(command, "glass.platform");
+        addProbeSystemProperty(command, "java.awt.headless");
+        addProbeSystemProperty(command, "prism.order");
+    }
+
+    private static void addProbeSystemProperty(final List<String> command, final String name) {
+        final var value = System.getProperty(name, "").strip();
+        if (!value.isBlank()) {
+            command.add("-D" + name + "=" + value);
+        }
     }
 
     private static boolean isWindows() {
