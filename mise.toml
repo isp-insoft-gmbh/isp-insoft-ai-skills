@@ -21,8 +21,12 @@ dprint = "0.54.0" # fmt: markdown (+frontmatter), json, toml
 biome = "2.4.15" # fmt + lint: js/mjs
 
 [tasks.list]
-description = "List skills: kind, capability, build state, harness targets"
+description = "List skills: name, kind, build state, harnesses, description"
 run = "node scripts/skills.mjs list"
+
+[tasks.test]
+description = "Run Node regression tests for the repo helper scripts"
+run = "node --test scripts/*.test.mjs"
 
 [tasks.build]
 description = "Build all skills into dist/<name>/. One skill: mise run //skills/fxdriver:build"

@@ -256,13 +256,25 @@ async function main() {
   let setup = !tools.acli || !tools.gh || !tools.git;
   if (tools.acli) {
     const ja = await run('acli', ['jira', 'auth', 'status']);
-    ja.ok ? ok('Jira auth') : (fail('Jira auth'), (setup = true));
+    if (ja.ok) ok('Jira auth');
+    else {
+      fail('Jira auth');
+      setup = true;
+    }
     const ca = await run('acli', ['confluence', 'auth', 'status']);
-    ca.ok ? ok('Confluence auth') : (fail('Confluence auth'), (setup = true));
+    if (ca.ok) ok('Confluence auth');
+    else {
+      fail('Confluence auth');
+      setup = true;
+    }
   }
   if (tools.gh) {
     const ga = await run('gh', ['auth', 'status']);
-    ga.ok ? ok('GitHub auth') : (fail('GitHub auth'), (setup = true));
+    if (ga.ok) ok('GitHub auth');
+    else {
+      fail('GitHub auth');
+      setup = true;
+    }
   }
   if (setup) setupGuide();
   line('');
@@ -342,7 +354,9 @@ async function main() {
       line('status counts:');
       [...counts.entries()]
         .sort((a, b) => b[1] - a[1])
-        .forEach(([k, v]) => line(`  ${v} ${k}`));
+        .forEach(([k, v]) => {
+          line(`  ${v} ${k}`);
+        });
       line('items:');
       data.forEach((i) => {
         seenKeys.add(i.key);
@@ -377,22 +391,24 @@ async function main() {
       line('my PRs:');
       prs
         .filter((p) => p.author.login === me)
-        .forEach((p) =>
+        .forEach((p) => {
           line(
             `  #${p.number} ${p.headRefName} ${p.reviewDecision || ''} ${p.title}`,
-          ),
-        );
+          );
+        });
       line('team PRs:');
       prs
         .filter((p) => p.author.login !== me)
-        .forEach((p) =>
+        .forEach((p) => {
           line(
             `  #${p.number} ${p.headRefName} ${p.reviewDecision || ''} ${p.title}`,
-          ),
-        );
+          );
+        });
       prs
         .flatMap((p) => rdKeysFrom(`${p.headRefName} ${p.title}`))
-        .forEach((k) => seenKeys.add(k));
+        .forEach((k) => {
+          seenKeys.add(k);
+        });
     } else fail('gh pr list failed or no open PRs');
   } else
     warn(
@@ -458,7 +474,9 @@ async function main() {
       const last = (
         await run('git', ['-C', e.worktree, 'log', '-1', '--format=%cs %h %s'])
       ).stdout.trim();
-      rdKeysFrom(`${e.branch} ${last}`).forEach((k) => seenKeys.add(k));
+      rdKeysFrom(`${e.branch} ${last}`).forEach((k) => {
+        seenKeys.add(k);
+      });
       line(
         `  ${e.branch} | dirty=${dirty} | ahead=${ahead} behind=${behind} | ${last}`,
       );
@@ -488,9 +506,9 @@ async function main() {
     ]);
     const data = q.ok ? jsonParse(q.stdout) : null;
     if (Array.isArray(data))
-      data.forEach((i) =>
-        line(`  ${i.key} [${i.fields.status.name}] ${i.fields.summary}`),
-      );
+      data.forEach((i) => {
+        line(`  ${i.key} [${i.fields.status.name}] ${i.fields.summary}`);
+      });
     else fail('RD key status query failed');
   } else warn('Skipped: no RD keys or acli missing');
 }

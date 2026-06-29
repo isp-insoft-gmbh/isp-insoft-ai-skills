@@ -111,10 +111,102 @@ function writeLedger(base, ledger) {
   fs.writeFileSync(ledgerPath(base), `${JSON.stringify(ledger, null, 2)}\n`);
 }
 
+function usage() {
+  return `usage: node scripts/skills.mjs <command>
+
+  list                              skills (name, kind, build state, harnesses, description)
+  status [--harness <h>]            per skill+harness: current | STALE | not-installed | ORPHAN
+  install <name...> --harness <h>   copy built skill(s) into harness <h>
+  install --harness <h>             install every skill
+  install ... --force               take over a same-named skill we did not install
+  uninstall <name...> --harness <h> remove skill(s) we installed (refuses un-owned dirs)
+  uninstall ... --force             remove even a dir not in our ledger
+  uninstall --orphans [--harness h] remove installs whose source skill was deleted here
+
+build/verify/fmt/lint are native mise tasks: mise run build | //skills/<name>:build
+
+harnesses: ${Object.keys(HARNESSES).join(', ')}`;
+}
+
+function printUsage() {
+  console.log(usage());
+}
+
+function harnessPath(harness) {
+  return HARNESSES[harness] || die(`unknown harness "${harness}"`);
+}
+
+function requireSkill(name) {
+  if (!listSkillNames().includes(name)) die(`unknown skill "${name}"`);
+}
+
+function skillDescription(name) {
+  const candidates = [
+    path.join(SKILLS_DIR, name, 'SKILL.md'),
+    path.join(distDir(name), 'SKILL.md'),
+    path.join(SKILLS_DIR, name, 'src', 'main', 'markdown', name, 'SKILL.md'),
+  ];
+  const skillMd = candidates.find((candidate) => fs.existsSync(candidate));
+  if (!skillMd) return '';
+  const md = fs.readFileSync(skillMd, 'utf8');
+  const fm = md.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!fm) return '';
+  const lines = fm[1].split(/\r?\n/);
+  const descriptionLine = lines.findIndex((line) =>
+    line.startsWith('description:'),
+  );
+  if (descriptionLine < 0) return '';
+  const first = lines[descriptionLine].replace(/^description:\s*/, '').trim();
+  const parts = first ? [first] : [];
+  for (const line of lines.slice(descriptionLine + 1)) {
+    if (/^[A-Za-z][\w-]*:/.test(line)) break;
+    if (line.trim()) parts.push(line.trim());
+  }
+  return parts.join(' ').replace(/^["']|["']$/g, '');
+}
+
+function skillKind(name) {
+  const dir = path.join(SKILLS_DIR, name);
+  if (fs.existsSync(path.join(dir, 'pom.xml'))) return 'maven/java';
+  if (fs.existsSync(path.join(dir, 'scripts'))) return 'markdown+node';
+  return 'markdown';
+}
+
+function printList() {
+  const rows = listSkillNames().map((name) => ({
+    name,
+    kind: skillKind(name),
+    built: isBuilt(name) ? 'yes' : 'no',
+    harnesses: Object.keys(HARNESSES).join(','),
+    description: skillDescription(name),
+  }));
+  const columns = [
+    ['skill', 'name'],
+    ['kind', 'kind'],
+    ['built', 'built'],
+    ['harnesses', 'harnesses'],
+  ];
+  const widths = columns.map(([label, key]) =>
+    Math.max(label.length, ...rows.map((row) => row[key].length)),
+  );
+  console.log(
+    columns.map(([label], index) => label.padEnd(widths[index])).join('  ') +
+      '  description',
+  );
+  for (const row of rows) {
+    console.log(
+      `${columns
+        .map(([, key], index) => row[key].padEnd(widths[index]))
+        .join('  ')}  ${row.description}`,
+    );
+  }
+}
+
 function installOne(name, harness, force = false) {
+  requireSkill(name);
   if (!isBuilt(name))
     die(`${name}: not built. run: mise run //skills/${name}:build`);
-  const base = HARNESSES[harness] || die(`unknown harness "${harness}"`);
+  const base = harnessPath(harness);
   const dest = path.join(base, name);
   const ledger = readLedger(base);
   const distHash = hashDir(distDir(name));
@@ -146,7 +238,8 @@ function installOne(name, harness, force = false) {
 }
 
 function uninstallOne(name, harness, force = false) {
-  const base = HARNESSES[harness] || die(`unknown harness "${harness}"`);
+  requireSkill(name);
+  const base = harnessPath(harness);
   const dest = path.join(base, name);
   const ledger = readLedger(base);
   const known = name in ledger;
@@ -180,7 +273,7 @@ function uninstallOne(name, harness, force = false) {
 // skill no longer exists. The discovery half of uninstall — when you no longer
 // have the deleted skill's name to type.
 function uninstallOrphans(harness) {
-  const base = HARNESSES[harness] || die(`unknown harness "${harness}"`);
+  const base = harnessPath(harness);
   const ledger = readLedger(base);
   const live = new Set(listSkillNames());
   const orphans = Object.keys(ledger).filter((n) => !live.has(n));
@@ -191,7 +284,9 @@ function uninstallOrphans(harness) {
   for (const n of orphans) {
     fs.rmSync(path.join(base, n), { recursive: true, force: true });
     delete ledger[n];
-    process.stdout.write(`  ✓ removed orphan ${n} (source deleted) from ${harness}\n`);
+    process.stdout.write(
+      `  ✓ removed orphan ${n} (source deleted) from ${harness}\n`,
+    );
   }
   writeLedger(base, ledger);
 }
@@ -201,29 +296,42 @@ function parseArgs(args) {
   const harness = i >= 0 ? args[i + 1] : null;
   const force = args.includes('--force');
   const orphans = args.includes('--orphans');
+  const help = args.includes('--help') || args.includes('-h');
   const names = args.filter((a) => !a.startsWith('--') && a !== harness);
-  return { harness, names, force, orphans };
+  return { harness, names, force, orphans, help };
 }
 
 const [cmd, ...rest] = process.argv.slice(2);
 switch (cmd) {
+  case undefined:
+  case 'help':
+  case '--help':
+  case '-h': {
+    printUsage();
+    break;
+  }
   case 'list': {
-    for (const n of listSkillNames()) {
-      console.log(`${n.padEnd(18)} ${isBuilt(n) ? 'built' : '-'}`);
-    }
+    const { help } = parseArgs(rest);
+    if (help) printUsage();
+    else printList();
     break;
   }
   case 'status': {
     // Drift report: for each skill x harness, is the installed copy current?
     // Per-skill state is byte-hash (dist vs installed). The ledger adds one
     // thing hashing can't: ORPHAN — we installed it, but its source is gone.
-    const { harness } = parseArgs(rest);
+    const { harness, help } = parseArgs(rest);
+    if (help) {
+      printUsage();
+      break;
+    }
     const harnesses = harness ? [harness] : Object.keys(HARNESSES);
     const live = listSkillNames();
     const liveSet = new Set(live);
     for (const h of harnesses) {
+      const base = harnessPath(h);
       const names = [
-        ...new Set([...live, ...Object.keys(readLedger(HARNESSES[h]))]),
+        ...new Set([...live, ...Object.keys(readLedger(base))]),
       ].sort();
       for (const n of names) {
         let state;
@@ -231,7 +339,7 @@ switch (cmd) {
           state = 'ORPHAN'; // we installed it; source deleted -> `uninstall --orphans`
         } else {
           const dh = hashDir(distDir(n));
-          const ih = hashDir(path.join(HARNESSES[h], n));
+          const ih = hashDir(path.join(base, n));
           state =
             dh === null
               ? 'not-built'
@@ -247,15 +355,25 @@ switch (cmd) {
     break;
   }
   case 'install': {
-    const { harness, names, force } = parseArgs(rest);
+    const { harness, names, force, help } = parseArgs(rest);
+    if (help) {
+      printUsage();
+      break;
+    }
     if (!harness) die('install needs --harness <claude|pi|codex>');
+    const base = harnessPath(harness);
     const order = names.length ? names : listSkillNames();
-    console.log(`install -> ${harness} (${HARNESSES[harness] || '??'})`);
+    for (const n of order) requireSkill(n);
+    console.log(`install -> ${harness} (${base})`);
     for (const n of order) installOne(n, harness, force);
     break;
   }
   case 'uninstall': {
-    const { harness, names, force, orphans } = parseArgs(rest);
+    const { harness, names, force, orphans, help } = parseArgs(rest);
+    if (help) {
+      printUsage();
+      break;
+    }
     if (orphans) {
       const harnesses = harness ? [harness] : Object.keys(HARNESSES);
       for (const h of harnesses) uninstallOrphans(h);
@@ -267,19 +385,6 @@ switch (cmd) {
     break;
   }
   default:
-    console.log(`usage: node scripts/skills.mjs <command>
-
-  list                              skills (name + build state)
-  status [--harness <h>]            per skill+harness: current | STALE | not-installed | ORPHAN
-  install <name...> --harness <h>   copy built skill(s) into harness <h>
-  install --harness <h>             install every skill
-  install ... --force               take over a same-named skill we did not install
-  uninstall <name...> --harness <h> remove skill(s) we installed (refuses un-owned dirs)
-  uninstall ... --force             remove even a dir not in our ledger
-  uninstall --orphans [--harness h] remove installs whose source skill was deleted here
-
-build/verify/fmt/lint are native mise tasks: mise run build | //skills/<name>:build
-
-harnesses: ${Object.keys(HARNESSES).join(', ')}`);
-    if (cmd && cmd !== 'help') process.exitCode = 1;
+    printUsage();
+    process.exitCode = 1;
 }

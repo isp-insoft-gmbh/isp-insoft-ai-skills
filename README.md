@@ -21,8 +21,9 @@ mise run install -- --harness claude  # install all skills into the claude harne
 | ----------------------------------------------- | ---------------------------------------------------------------------- |
 | `mise run build`                                | build every skill into `dist/<name>/`                                  |
 | `mise run verify`                               | full per-skill check (tests, frontmatter)                              |
+| `mise run test`                                 | regression tests for the repo helper scripts                           |
 | `mise run fmt` / `lint`                         | format / lint md·json·toml·js (+ skill-local, e.g. java)               |
-| `mise run list`                                 | skills + build state                                                   |
+| `mise run list`                                 | skills + kind + build state + harnesses + description                  |
 | `mise run status -- --harness <h>`              | per skill: `current` · `STALE` · `not-installed` · `ORPHAN`            |
 | `mise run install -- [name…] --harness <h>`     | install (all, or named) — refuses to clobber a skill it didn't install |
 | `mise run uninstall -- <name…> --harness <h>`   | remove skills it installed                                             |
