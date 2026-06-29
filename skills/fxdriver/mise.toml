@@ -2,9 +2,9 @@
 # `mise run //skills/fxdriver:<task>` (monorepo); mise activates java below.
 # mvnw is routed through sh.mjs so the same command works on Windows + unix.
 [tools]
-# JDK 25: fxdriver's tests use Process.waitFor(Duration) (a JDK-25 API), so it
-# won't compile on 21 despite the pom targeting release 21. mvnw provides Maven.
-java = "temurin-25"
+# Java 21 is the compatibility floor. CI overrides FXDRIVER_JAVA_TOOL for newer
+# Java/JavaFX matrix legs.
+java = "{{ get_env(name='FXDRIVER_JAVA_TOOL', default='temurin-21') }}"
 
 [tasks.build]
 description = "Compile + package fxdriver -> dist/fxdriver (skips tests; fast)"
@@ -15,7 +15,7 @@ run = [
 
 [tasks.verify]
 description = "Full check: unit + JavaFX integration tests + spotless"
-run = "node ../../scripts/sh.mjs ./mvnw verify"
+run = "node ../../scripts/sh.mjs ./mvnw --batch-mode verify {{ get_env(name='FXDRIVER_MAVEN_ARGS', default='') }}"
 
 # Skill-local fmt/lint extension: root handles md/js, fxdriver owns its java.
 [tasks.fmt]

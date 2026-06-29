@@ -1,0 +1,89 @@
+name: ci
+
+on:
+  push:
+    branches: [trunk]
+  pull_request:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  skills:
+    name: skills
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v3
+        with:
+          install: true
+          cache: true
+      - run: mise tasks validate
+      - run: mise run test
+      - run: mise run lint
+      - run: mise run build
+
+  fxdriver:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Compatibility floor: JavaFX 21 uses the GTK backend and needs Xvfb on Linux CI.
+          - name: linux-java-21-javafx-21
+            os: ubuntu-latest
+            java_tool: temurin-21
+            maven_args: ""
+            xvfb: true
+
+          # Latest stable line: JavaFX 26 has the Headless Glass platform.
+          - name: linux-java-26-javafx-26
+            os: ubuntu-latest
+            java_tool: temurin-26
+            maven_args: >-
+              -Djavafx.version=26.0.1
+              -Dglass.platform=Headless
+              -Djava.awt.headless=true
+              -Dprism.order=sw
+            xvfb: false
+          - name: windows-java-26-javafx-26
+            os: windows-latest
+            java_tool: temurin-26
+            maven_args: >-
+              -Djavafx.version=26.0.1
+              -Dglass.platform=Headless
+              -Djava.awt.headless=true
+              -Dprism.order=sw
+            xvfb: false
+          - name: macos-java-26-javafx-26
+            os: macos-latest
+            java_tool: temurin-26
+            maven_args: >-
+              -Djavafx.version=26.0.1
+              -Dglass.platform=Headless
+              -Djava.awt.headless=true
+              -Dprism.order=sw
+            xvfb: false
+    env:
+      FXDRIVER_JAVA_TOOL: ${{ matrix.java_tool }}
+      FXDRIVER_MAVEN_ARGS: ${{ matrix.maven_args }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v3
+        with:
+          install: true
+          cache: true
+      - name: Install Xvfb
+        if: matrix.xvfb == true
+        run: sudo apt-get update && sudo apt-get install --yes xvfb
+      - name: Verify
+        if: matrix.xvfb != true
+        run: mise run verify
+      - name: Verify with Xvfb
+        if: matrix.xvfb == true
+        run: xvfb-run --auto-servernum mise run verify
