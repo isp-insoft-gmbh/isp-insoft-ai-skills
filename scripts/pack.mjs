@@ -1,22 +1,26 @@
 #!/usr/bin/env node
 // Pack a skill's deliverable into ./dist/<name>/. Run from the skill dir (mise
-// sets the task cwd to the skill dir). The skill's name is its dir name.
+// sets the task cwd to the skill dir). The default artifact name is its dir name.
 //
 //   pack.mjs                copy the skill source (pruned)  -> ./dist/<name>/
 //   pack.mjs --from <dir>   copy a built output dir verbatim -> ./dist/<name>/
+//   pack.mjs --name <name>  write to ./dist/<name>/ (for bundled companions)
 //
 // Every artifact must contain SKILL.md or packing fails.
 import fs from 'node:fs';
 import path from 'node:path';
 
 const CWD = process.cwd();
-const name = path.basename(CWD);
+const argValue = (flag) => {
+  const i = process.argv.indexOf(flag);
+  return i >= 0 ? process.argv[i + 1] : null;
+};
+const name = argValue('--name') || path.basename(CWD);
 
 // Never ship build junk when copying source.
 const DENY = new Set(['mise.toml', 'target', 'node_modules', '.git', 'dist']);
 
-const i = process.argv.indexOf('--from');
-const builtFrom = i >= 0 ? process.argv[i + 1] : null;
+const builtFrom = argValue('--from');
 const src = builtFrom ? path.resolve(CWD, builtFrom) : CWD;
 const dest = path.join(CWD, 'dist', name);
 

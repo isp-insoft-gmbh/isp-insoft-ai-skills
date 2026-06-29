@@ -59,10 +59,13 @@ own JavaFX runtime.
 
 ## Rules for agents
 
-- Prefer stable selectors: `nodeId`, `textExact`, `eid`, `role`, then text
-  contains.
-- If important controls have no stable node ids, tell the human. Propose adding
-  JavaFX node ids as a low-risk app-under-test change, but never mutate app code
+- Prefer stable selectors: `nodeId` / `#id`, `textExact`, `eid`, `role`, then
+  text contains.
+- If important controls have no stable node ids, ask permission to add minimal
+  semantic JavaFX ids to the app under test. Treat ids as low-risk, persistent
+  testability improvements: add them only where they make the requested and
+  likely future navigation meaningfully more stable; follow local naming/style;
+  keep them in the app unless the human asks otherwise. Never mutate app code
   silently.
 - Use `value` for `setText`/`type` payloads. `text` is a selector field, not an
   input payload.

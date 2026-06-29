@@ -11,6 +11,7 @@ description = "Compile + package fxdriver -> dist/fxdriver (skips tests; fast)"
 run = [
   "node ../../scripts/sh.mjs ./mvnw -q -DskipTests package",
   "node ../../scripts/pack.mjs --from target/fxdriver",
+  "node ../../scripts/pack.mjs --name fxdriver-instructions --from target/fxdriver-instructions",
 ]
 
 [tasks.verify]

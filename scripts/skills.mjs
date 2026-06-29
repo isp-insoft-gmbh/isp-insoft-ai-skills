@@ -6,8 +6,9 @@
 // runner owns only what mise has no equivalent for — list/status (content-hash
 // drift) and install/uninstall (clean-copy a built dist/ into a harness dir).
 //
-// Bare node, no deps, no manifest: a skill is any skills/<name>/ holding a
-// mise.toml; its name IS the dir name. Identity is the directory, nothing more.
+// Bare node, no deps, no manifest: build owners are skills/<name>/ dirs holding
+// mise.toml. Built artifacts live under each owner's dist/ and may include
+// companion skills, such as fxdriver-instructions.
 
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
@@ -34,8 +35,7 @@ const die = (msg) => {
   process.exit(1);
 };
 
-// A skill is a skills/<name>/ dir with a mise.toml (its build/verify entrypoint).
-function listSkillNames() {
+function listSourceSkillNames() {
   return fs
     .readdirSync(SKILLS_DIR, { withFileTypes: true })
     .filter(
@@ -47,8 +47,74 @@ function listSkillNames() {
     .sort();
 }
 
-// Each skill's deliverable lives at skills/<name>/dist/<name>/.
-const distDir = (name) => path.join(SKILLS_DIR, name, 'dist', name);
+function addArtifact(entries, name, owner, sourceMd = null) {
+  const existing = entries.get(name) || {};
+  entries.set(name, {
+    name,
+    owner,
+    sourceMd: sourceMd || existing.sourceMd || null,
+    dir: path.join(SKILLS_DIR, owner, 'dist', name),
+  });
+}
+
+function listArtifacts() {
+  const entries = new Map();
+  for (const owner of listSourceSkillNames()) {
+    addArtifact(
+      entries,
+      owner,
+      owner,
+      path.join(SKILLS_DIR, owner, 'SKILL.md'),
+    );
+
+    const markdownRoot = path.join(
+      SKILLS_DIR,
+      owner,
+      'src',
+      'main',
+      'markdown',
+    );
+    if (fs.existsSync(markdownRoot)) {
+      for (const d of fs.readdirSync(markdownRoot, { withFileTypes: true })) {
+        if (
+          d.isDirectory() &&
+          fs.existsSync(path.join(markdownRoot, d.name, 'SKILL.md'))
+        ) {
+          addArtifact(
+            entries,
+            d.name,
+            owner,
+            path.join(markdownRoot, d.name, 'SKILL.md'),
+          );
+        }
+      }
+    }
+
+    const distRoot = path.join(SKILLS_DIR, owner, 'dist');
+    if (fs.existsSync(distRoot)) {
+      for (const d of fs.readdirSync(distRoot, { withFileTypes: true })) {
+        if (
+          d.isDirectory() &&
+          fs.existsSync(path.join(distRoot, d.name, 'SKILL.md'))
+        ) {
+          addArtifact(entries, d.name, owner);
+        }
+      }
+    }
+  }
+  return [...entries.values()].sort((a, b) => (a.name < b.name ? -1 : 1));
+}
+
+function artifact(name) {
+  return listArtifacts().find((entry) => entry.name === name) || null;
+}
+
+function listSkillNames() {
+  return listArtifacts().map((entry) => entry.name);
+}
+
+const distDir = (name) =>
+  artifact(name)?.dir || path.join(SKILLS_DIR, name, 'dist', name);
 const isBuilt = (name) => fs.existsSync(path.join(distDir(name), 'SKILL.md'));
 
 // lstat-based existence: true even for a broken symlink (existsSync follows the
@@ -137,16 +203,30 @@ function harnessPath(harness) {
 }
 
 function requireSkill(name) {
-  if (!listSkillNames().includes(name)) die(`unknown skill "${name}"`);
+  if (!artifact(name)) die(`unknown skill "${name}"`);
 }
 
 function skillDescription(name) {
+  const entry = artifact(name);
   const candidates = [
-    path.join(SKILLS_DIR, name, 'SKILL.md'),
+    entry?.sourceMd,
     path.join(distDir(name), 'SKILL.md'),
-    path.join(SKILLS_DIR, name, 'src', 'main', 'markdown', name, 'SKILL.md'),
+    path.join(SKILLS_DIR, name, 'SKILL.md'),
+    entry
+      ? path.join(
+          SKILLS_DIR,
+          entry.owner,
+          'src',
+          'main',
+          'markdown',
+          name,
+          'SKILL.md',
+        )
+      : null,
   ];
-  const skillMd = candidates.find((candidate) => fs.existsSync(candidate));
+  const skillMd = candidates.find(
+    (candidate) => candidate && fs.existsSync(candidate),
+  );
   if (!skillMd) return '';
   const md = fs.readFileSync(skillMd, 'utf8');
   const fm = md.match(/^---\r?\n([\s\S]*?)\r?\n---/);
@@ -166,7 +246,8 @@ function skillDescription(name) {
 }
 
 function skillKind(name) {
-  const dir = path.join(SKILLS_DIR, name);
+  const owner = artifact(name)?.owner || name;
+  const dir = path.join(SKILLS_DIR, owner);
   if (fs.existsSync(path.join(dir, 'pom.xml'))) return 'maven/java';
   if (fs.existsSync(path.join(dir, 'scripts'))) return 'markdown+node';
   return 'markdown';
@@ -205,7 +286,9 @@ function printList() {
 function installOne(name, harness, force = false) {
   requireSkill(name);
   if (!isBuilt(name))
-    die(`${name}: not built. run: mise run //skills/${name}:build`);
+    die(
+      `${name}: not built. run: mise run //skills/${artifact(name).owner}:build`,
+    );
   const base = harnessPath(harness);
   const dest = path.join(base, name);
   const ledger = readLedger(base);

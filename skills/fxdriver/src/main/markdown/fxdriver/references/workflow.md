@@ -60,6 +60,13 @@ Verify ambiguous selectors with `highlight`:
 java -jar @fxdriver.skill.jar@ rpc <port> highlight '{"text":"Find"}'
 ```
 
+If the workflow needs repeated or future automation and important controls lack
+stable ids, ask the human for permission to add JavaFX ids to the app under
+test. When approved, add the smallest useful set of semantic ids, follow local
+style and naming conventions, and leave them in the app. Do not add broad,
+mechanical ids to every node; target controls that represent user intent,
+navigation landmarks, form fields, menus, tables/lists, and primary actions.
+
 ## Act
 
 Examples:

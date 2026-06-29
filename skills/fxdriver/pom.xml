@@ -172,7 +172,9 @@
             <configuration>
               <target>
                 <delete dir="${project.build.directory}/fxdriver"/>
+                <delete dir="${project.build.directory}/fxdriver-instructions"/>
                 <mkdir dir="${project.build.directory}/fxdriver"/>
+                <mkdir dir="${project.build.directory}/fxdriver-instructions"/>
                 <copy todir="${project.build.directory}/fxdriver">
                   <fileset dir="${project.basedir}/src/main/markdown/fxdriver"/>
                   <filterset>
@@ -182,8 +184,11 @@
                     <filter token="javafx.version" value="${javafx.version}"/>
                   </filterset>
                 </copy>
+                <copy todir="${project.build.directory}/fxdriver-instructions">
+                  <fileset dir="${project.basedir}/src/main/markdown/fxdriver-instructions"/>
+                </copy>
                 <copy file="${project.build.directory}/${project.build.finalName}.jar" todir="${project.build.directory}/fxdriver"/>
-                <zip basedir="${project.build.directory}" destfile="${project.build.directory}/fxdriver-skill.zip" includes="fxdriver/**"/>
+                <zip basedir="${project.build.directory}" destfile="${project.build.directory}/fxdriver-skill.zip" includes="fxdriver/**,fxdriver-instructions/**"/>
               </target>
             </configuration>
           </execution>
