@@ -42,7 +42,14 @@ commands only.
 Example launch JSON:
 
 ```json
-{"pid":12345,"port":43123,"token":"...","endpoint":"http://127.0.0.1:43123/rpc","endpointFile":"/abs/target/fxdriver-endpoints/launch-1.json","startupMs":822}
+{
+  "pid": 12345,
+  "port": 43123,
+  "token": "...",
+  "endpoint": "http://127.0.0.1:43123/rpc",
+  "endpointFile": "/abs/target/fxdriver-endpoints/launch-1.json",
+  "startupMs": 822
+}
 ```
 
 ## Core methods

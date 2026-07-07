@@ -3,8 +3,7 @@
   "excludes": [
     "**/dist/**",
     "**/target/**",
-    "**/node_modules/**",
-    "skills/fxdriver/**"
+    "**/node_modules/**"
   ],
   "plugins": [
     "https://plugins.dprint.dev/markdown-0.22.1.wasm",

@@ -17,6 +17,7 @@ config_roots = ["skills/*"]
 
 [tools]
 node = "22" # runs scripts/skills.mjs (and isp-start-day at runtime)
+yq = "4.53.3" # parses YAML frontmatter without npm deps
 dprint = "0.54.0" # fmt: markdown (+frontmatter), json, toml
 biome = "2.4.15" # fmt + lint: js/mjs
 
@@ -26,7 +27,7 @@ run = "node scripts/skills.mjs list"
 
 [tasks.test]
 description = "Run Node regression tests for the repo helper scripts"
-run = "node --test scripts/*.test.mjs"
+run = "node --test \"scripts/*.test.mjs\""
 
 [tasks.build]
 description = "Build all skills into dist/<name>/. One skill: mise run //skills/fxdriver:build"
@@ -48,6 +49,7 @@ run = [
 description = "Lint md/json/toml + js (read-only), then any skill's own lint. Fails on issues."
 run = [
   "dprint check",
+  "node scripts/check-frontmatter.mjs --source",
   "biome check .",
   "mise run //skills/...:lint",
 ]
