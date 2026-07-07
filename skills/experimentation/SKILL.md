@@ -10,7 +10,7 @@ Learn → verify → promote/delete → clean.
 
 ## Trigger
 
-Use iff task creates/runs throwaway code/data/artifacts:
+Use if task creates/runs throwaway code/data/artifacts:
 
 - scratch scripts/files, spikes, probes, PoCs
 - microbenchmarks, migration dry-runs
@@ -149,22 +149,3 @@ Remaining: <intentional dirty paths>
 - claim from 1 happy path
 - broad cleanup:
   `rm -rf *`, `git clean -fdx` sans consent
-
-## Basis
-
-Distilled from reproducible computational research + SE artifact work:
-
-- Sandve 2013:
-  result provenance; avoid manual data edits; version scripts; record
-  intermediates/seeds.
-- Wilson 2017:
-  project org; generated files in results dirs; explicit deps; VCS; recorded
-  processing.
-- NASEM 2019:
-  reproducibility needs inputs, executable methods, params, env,
-  nondeterministic intermediates.
-- Beaulieu-Jones/Greene 2017:
-  continuous analysis = rerun + env/log capture; emulate lightly for spikes.
-- ICSE artifact studies ≤2026:
-  availability ≠ executability ≠ reproducibility; failures:
-  env drift, weak docs, missing deps, unstructured artifacts.
