@@ -125,7 +125,8 @@ Delete rule:
 
 ```text
 Only delete explicit paths created by this experiment.
-Never delete user data, research cache, repo files, broad globs, or git-clean without confirmation.
+Never delete user data, research cache, repo files, broad globs, or git-clean
+without confirmation.
 ```
 
 Final report shape:
