@@ -26,6 +26,7 @@ mise run install -- --harness claude  # install all skills into the claude harne
 | `mise run list`                                 | skills + kind + build state + harnesses + description                  |
 | `mise run status -- --harness <h>`              | per skill: `current` · `STALE` · `not-installed` · `ORPHAN`            |
 | `mise run install -- [name…] --harness <h>`     | install (all, or named) — refuses to clobber a skill it didn't install |
+| `mise run install-all`                          | build, then install all skills into claude, pi, and codex              |
 | `mise run uninstall -- <name…> --harness <h>`   | remove skills it installed                                             |
 | `mise run uninstall -- --orphans --harness <h>` | remove installs whose source was deleted here                          |
 

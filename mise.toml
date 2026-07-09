@@ -61,6 +61,15 @@ run = "node scripts/skills.mjs status"
 description = "Install into a harness. e.g. mise run install -- --harness claude"
 run = "node scripts/skills.mjs install"
 
+[tasks.install-all]
+description = "Build, then install all skills into claude, pi, and codex"
+run = [
+  "mise run build",
+  "node scripts/skills.mjs install --harness claude",
+  "node scripts/skills.mjs install --harness pi",
+  "node scripts/skills.mjs install --harness codex",
+]
+
 [tasks.uninstall]
 description = "Remove from a harness. e.g. mise run uninstall -- fxdriver --harness claude"
 run = "node scripts/skills.mjs uninstall"
