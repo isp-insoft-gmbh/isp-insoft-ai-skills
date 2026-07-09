@@ -22,9 +22,9 @@ quality judgments, and app-specific workflows.
 2. Attach fxdriver to its JVM PID.
 3. Snapshot UI.
 4. Pick stable selectors (`nodeId`, `textExact`, `type`, `role`, `eid`).
-5. Act: `click`/`fire` buttons, `setText`/`type` fields, `select` for
-   choice/range/table/tree controls, `fireMenuItem` for menus, and `key` for
-   real keystrokes (Enter/Tab/chords).
+5. Act: `click`/`fire` buttons, `setText`/`type` fields, `setValue` or
+   `selectIndex` for choice/range/table/tree controls, `fireMenuItem` for menus,
+   and `key` for real keystrokes (Enter/Tab/chords).
 6. Wait/assert.
 7. Capture screenshot when uncertain or after visual changes; use
    `videoStart`/`videoStep`/`videoStop` to record a whole run as GIF or APNG
@@ -37,6 +37,8 @@ Read these when using this skill:
 
 - `references/protocol.md` — JSON-RPC methods and selector forms.
 - `references/workflow.md` — recommended observe/act/wait loop.
+- `references/failures.md` — verified broken-flow diagnostics and recovery
+  examples.
 - `references/visual.md` — screenshot, image summary, and diff usage.
 - `references/troubleshooting.md` — attach/Wayland/selector/debug notes.
 
@@ -69,11 +71,12 @@ own JavaFX runtime.
   silently.
 - Use `value` for `setText`/`type` payloads. `text` is a selector field, not an
   input payload.
-- `click`/`fire` drive `ButtonBase` controls and `ListView`; use `select` for
-  choice, picker, range, table, tree, and tree-table controls. Use
-  `fireMenuItem` for `MenuBar`, `MenuButton`, `SplitMenuButton`, and context
-  menus. For keyboard-only interactions (submit with Enter, navigate with
-  Tab/arrows, trigger accelerators), use `key`.
+- `click`/`fire` drive `ButtonBase` controls and `ListView`; use `setValue`,
+  `selectIndex`, and control-specific methods for choice, picker, range, table,
+  tree, and tree-table controls. Use `fireMenuItem` for `MenuBar`,
+  `MenuButton`, `SplitMenuButton`, and context menus. For keyboard-only
+  interactions (submit with Enter, navigate with Tab/arrows, trigger
+  accelerators), use `key`.
 - Do not rely only on JSON assertions for visual quality. Read screenshots when
   layout/colors are under review.
 - For whole-flow videos, prefer `canvas:"fixed"` with explicit `width`/`height`,

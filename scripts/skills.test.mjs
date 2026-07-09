@@ -92,6 +92,10 @@ test('list exposes coworker-facing kind, build state, harnesses, and description
   );
   assert.match(
     result.stdout,
+    /uuid-generator\s+markdown\+node\s+(yes|no)\s+claude,pi,codex/,
+  );
+  assert.match(
+    result.stdout,
     /fxdriver\s+maven\/java\s+(yes|no)\s+claude,pi,codex/,
   );
   assert.match(
@@ -103,4 +107,5 @@ test('list exposes coworker-facing kind, build state, harnesses, and description
     result.stdout,
     /fxdriver-instructions\s+.*Clarify and harden human instructions/,
   );
+  assert.match(result.stdout, /uuid-generator\s+.*Generate UUIDs\/GUIDs/);
 });

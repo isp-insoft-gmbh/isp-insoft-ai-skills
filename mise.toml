@@ -16,10 +16,9 @@ monorepo_root = true
 config_roots = ["skills/*"]
 
 [tools]
-node = "22" # runs scripts/skills.mjs (and isp-start-day at runtime)
-yq = "4.53.3" # parses YAML frontmatter without npm deps
-dprint = "0.54.0" # fmt: markdown (+frontmatter), json, toml
-biome = "2.4.15" # fmt + lint: js/mjs
+node = "26.4.0" # runs scripts/skills.mjs and Node companion skills
+dprint = "0.55.1" # fmt: markdown (+frontmatter), json, toml
+biome = "2.5.3" # fmt + lint: js/mjs
 
 [tasks.list]
 description = "List skills: name, kind, build state, harnesses, description"

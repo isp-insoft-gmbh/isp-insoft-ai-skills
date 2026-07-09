@@ -40,10 +40,10 @@ cmd — Git Bash mangles the leading `//`.
 | ----------------- | --------------- | ----------------- |
 | `experimentation` | markdown        | claude, pi, codex |
 | `isp-start-day`   | markdown + Node | claude, pi, codex |
+| `uuid-generator`  | markdown + Node | claude, pi, codex |
 | `fxdriver`        | Maven / JavaFX  | claude, pi, codex |
 
-The three span the complexity map — proof that one convention handles all of it.
-See [CONVENTION.md](CONVENTION.md) for the contract.
+See [CONVENTION.md](CONVENTION.md) for the contract when creating new skills.
 
 ## Layout
 

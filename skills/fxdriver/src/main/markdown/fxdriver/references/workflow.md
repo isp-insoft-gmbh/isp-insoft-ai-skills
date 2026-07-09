@@ -34,7 +34,6 @@ Look for:
 
 - visible windows;
 - stable `nodeId` values;
-- `selectorPath` values for repeated labels;
 - actionable buttons/text inputs/lists;
 - exact text vs duplicate skin/internal text;
 - disabled/focused/common node state;
@@ -47,12 +46,11 @@ Look for:
 Preference order:
 
 1. `nodeId` / `#id`
-2. `selectorPath` copied from snapshot when labels repeat
-3. `eid` if stable within this attached session
-4. `textExact`
-5. `role` + text/accessibility
-6. `type` for broad discovery only
-7. bare text contains only as last resort
+2. `eid` if stable within this attached session
+3. `textExact`
+4. `role` + text/accessibility
+5. `type` for broad discovery only
+6. bare text contains only as last resort
 
 Verify ambiguous selectors with `highlight`:
 
@@ -90,7 +88,9 @@ java -jar @fxdriver.skill.jar@ rpc <port> assert '{"textExact":"Keep duplicates"
 
 Do not assume immediate UI update after action.
 
-If a wait fails, read `nearMatches[]` before trying another selector.
+If a wait fails, read the returned `ok:false`/`TIMEOUT`, then take a fresh
+summary or full snapshot and compare visible text, ids, roles, and control
+state before trying another selector.
 
 ## Visual review
 

@@ -118,7 +118,6 @@ Important node fields:
 - `eid` / `handle`
 - `parent`
 - `window`
-- `selectorPath`
 - `type`
 - `id`
 - `text`
@@ -166,25 +165,22 @@ Initial `semantic` support:
 (`masked: true`). Virtualized controls expose model/selection metadata;
 unrealized rows/cells are not emitted as nodes.
 
-### `snapshotSummary`
+### Snapshot summary
 
 ```sh
-java -jar @fxdriver.skill.jar@ rpc <port> snapshotSummary '{}'
 java -jar @fxdriver.skill.jar@ snapshot <port> --summary
 ```
 
-Returns a compact first view:
+The CLI summary command returns a compact first view:
 
 - `windows[]`: window id/index/title/focus/bounds.
-- `buttons[]`: visible `ButtonBase` controls with text and selector path.
+- `buttons[]`: visible `ButtonBase` controls with text.
 - `textFields[]`: text inputs with value/prompt/editability.
 - `tables[]`: visible `TableView` and `TreeTableView` row/column summaries.
 - `selectedTabs[]`: selected tab text per visible `TabPane`.
 - `visibleTextSample[]`: bounded visible text sample for orientation.
 
 Use full `snapshot` when you need bounds, semantics, or raw node hierarchy.
-Copy `selectorPath` back as `selectorPath` when repeated labels make text
-selectors ambiguous.
 
 ### `highlight`
 
@@ -250,23 +246,19 @@ a literal string. With a selector (`nodeId`, `textExact`, …) the target node i
 focused first; otherwise events go to the current focus owner. Returns the
 resolved key/chars and a description of the target node.
 
-### `select`
+### `setValue`, `selectIndex`, `selectListItem`
 
 ```sh
-java -jar @fxdriver.skill.jar@ rpc <port> select '{"nodeId":"country","itemText":"Germany"}'
-java -jar @fxdriver.skill.jar@ rpc <port> select '{"nodeId":"size","index":2}'
-java -jar @fxdriver.skill.jar@ rpc <port> select '{"nodeId":"count","value":"42"}'
+java -jar @fxdriver.skill.jar@ rpc <port> setValue '{"nodeId":"country","value":"Germany"}'
+java -jar @fxdriver.skill.jar@ rpc <port> selectIndex '{"nodeId":"projects","index":2}'
+java -jar @fxdriver.skill.jar@ rpc <port> selectListItem '{"nodeId":"duplicates-list","itemText":"portrait"}'
 ```
 
-Drives choice controls that `click`/`fire` cannot: `ComboBox`, `ChoiceBox`,
-`TabPane`, `Spinner`, `DatePicker`, `ColorPicker`, `Slider`, `ScrollBar`,
-`TableView`, `TreeView`, and `TreeTableView`. Selects by `itemText` (exact then
-contains, using the control's `StringConverter` where available), by `index`,
-or by `value` where the control exposes a direct value. For a Spinner, a
-positive `index` increments and a negative one decrements. Returns `kind`,
-`index`, `value`, and `selected`; `ok:false` with `UNSUPPORTED` if the matched
-node is not a selectable control, or `NO_ITEM` if no entry matched. (`ListView`
-selection has its own `selectListItem`.)
+Drives controls that `click`/`fire` cannot reliably set. Use `setValue` for
+controls with a direct value such as `ChoiceBox`, `ComboBox`, `DatePicker`,
+`Slider`, and text-like value controls. Use `selectIndex` for indexed selection
+in list/table/tree-style controls. Use `selectListItem` for `ListView` by item
+text.
 
 ### `tableCell`
 
@@ -303,8 +295,8 @@ explicit `timeoutMs` for slow app operations. Optional predicates: `present`,
 `enabled`, `focused`, `visible`. Like the action commands, `wait` and `assert`
 only consider visible nodes unless `visible:false` is passed explicitly, so a
 satisfied `wait` means the follow-up `click`/`type` sees the same node. Failed
-waits include `nearMatches[]` with nearby visible text/id/type candidates and
-their `selectorPath`.
+waits return `ok:false` with `TIMEOUT`; take a fresh snapshot or CLI summary to
+compare visible text, ids, roles, and control state before retrying.
 
 ### `assert`
 
@@ -325,12 +317,9 @@ java -jar @fxdriver.skill.jar@ rpc <port> events '{"clear":true}'
 java -jar @fxdriver.skill.jar@ rpc <port> clearEvents '{}'
 ```
 
-Returns recent fxdriver calls with `ts`, `method`, `ok`, `severity`, and
-`params`. `severity` is `info` for successful calls, `miss` for app-level
-`ok:false` responses such as exploratory selector misses, and `error` for
-protocol-level JSON-RPC errors. If request params include `tag` or `scenario`,
-the event copies them to top-level fields. Use `events {"clear":true}` to read
-and clear in one call.
+Returns recent fxdriver calls with `ts`, `method`, `ok`, and `params`. If
+request params include `tag` or `scenario`, the event copies them to top-level
+fields. Use `events {"clear":true}` to read and clear in one call.
 
 ### `screenshot`
 
@@ -480,7 +469,6 @@ regexText=Open.*     regex over visible/control text
 type=Button          Java class simple name
 role=BUTTON          accessible role
 accessible=Save      accessible text contains
-path=window[0] ...   selectorPath copied from snapshot
 ```
 
 JSON params that map to selectors:
@@ -496,6 +484,5 @@ JSON params that map to selectors:
 { "type": "Button" }
 { "role": "BUTTON" }
 { "accessible": "Save" }
-{ "selectorPath": "window[0] > control[0] > button#save[0]" }
 { "selector": "type=Button" }
 ```

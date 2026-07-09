@@ -2,9 +2,8 @@
 # `mise run //skills/fxdriver:<task>` (monorepo); mise activates java below.
 # mvnw is routed through sh.mjs so the same command works on Windows + unix.
 [tools]
-# Java 21 is the compatibility floor. CI overrides FXDRIVER_JAVA_TOOL for newer
-# Java/JavaFX matrix legs.
-java = "{{ get_env(name='FXDRIVER_JAVA_TOOL', default='temurin-21') }}"
+# Java 21 is the compatibility floor; Java 26 needs JavaFX 26 Maven args.
+java = "{{ get_env(name='FXDRIVER_JAVA_TOOL', default='temurin-21.0.11+10') }}"
 
 [tasks.build]
 description = "Compile + package fxdriver -> dist/fxdriver (skips tests; fast)"
