@@ -58,4 +58,4 @@ mise.toml                   runtime pins + task entrypoints
 
 ## License
 
-[MIT](LICENSE) © ISP-INsoft GmbH
+[MIT](LICENSE) © ISP-Insoft GmbH

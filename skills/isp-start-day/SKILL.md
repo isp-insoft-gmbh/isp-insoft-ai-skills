@@ -1,11 +1,11 @@
 ---
 name: isp-start-day
-description: Daily ISP-INsoft start-of-day compliance check. Use when starting workday, validating Bürobelegung, Jira sprint state, KKG PRs, and local KKG branches/worktrees. Skips Tempo. Gives terse setup help when deps/auth are missing. Cross-platform Node implementation; no Bash. Never mutates Jira, Confluence, GitHub, or git state without explicit confirmation.
+description: Daily ISP-Insoft start-of-day compliance check. Use when starting workday, validating Bürobelegung, Jira sprint state, KKG PRs, and local KKG branches/worktrees. Skips Tempo. Gives terse setup help when deps/auth are missing. Cross-platform Node implementation; no Bash. Never mutates Jira, Confluence, GitHub, or git state without explicit confirmation.
 ---
 
 # isp-start-day
 
-Daily start-of-day workflow for ISP-INsoft process hygiene.
+Daily start-of-day workflow for ISP-Insoft process hygiene.
 
 ## Contract
 
