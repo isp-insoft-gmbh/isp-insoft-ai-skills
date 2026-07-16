@@ -1,3 +1,0 @@
-- Add a durable CLI endpoint-file helper only if agents keep spending calls parsing launch JSON.
-- Add explicit `events` failure summaries only if full event trails remain costly to inspect.
-- Test focused Data/menus/tables workflow after Forms improvements to avoid benchmark overfitting.

@@ -39,4 +39,4 @@ Use that JSON file directly for RPC: `java -jar fxdriver.jar rpc target/fxdriver
 - Trust observable UI; do not decompile app/JAR bytecode unless driver evidence cannot answer.
 - Video and modal-safe asynchronous dispatch are unavailable.
 
-Read `references/protocol.md` only when exact JSON is needed; read `references/troubleshooting.md` only after a failure.
+Read all of `references/protocol.md` in one call only when exact JSON is needed; read `references/troubleshooting.md` only after a failure.
