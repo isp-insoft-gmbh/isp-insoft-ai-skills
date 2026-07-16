@@ -1,0 +1,22 @@
+import { randomInt } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+
+const tune = resolve(import.meta.dirname);
+const queue = join(tune, "queue");
+mkdirSync(queue, { recursive: true });
+const id = `${Date.now()}-${process.pid}`;
+const request = join(queue, "request.json");
+const response = join(queue, `${id}.json`);
+if (existsSync(request)) throw new Error("native benchmark runner is busy");
+const model = "openai-codex/gpt-5.5:high";
+const scenario = "data";
+writeFileSync(request, JSON.stringify({ id, model, scenario, runName: `run-${id}` }));
+const deadline = Date.now() + (model.includes("5.6-sol") ? 1_400_000 : 900_000);
+while (!existsSync(response) && Date.now() < deadline) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
+if (!existsSync(response)) throw new Error("native benchmark runner timed out");
+const result = JSON.parse(readFileSync(response, "utf8"));
+rmSync(response);
+process.stdout.write(result.stdout ?? "");
+process.stderr.write(result.stderr ?? "");
+process.exit(result.status ?? 1);

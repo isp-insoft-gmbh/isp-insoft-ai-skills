@@ -585,6 +585,8 @@ public final class FxDriverAgent {
         final var windows = new ArrayList<String>();
         final var buttons = new ArrayList<String>();
         final var textFields = new ArrayList<String>();
+        final var controls = new ArrayList<String>();
+        final var menus = new ArrayList<String>();
         final var tables = new ArrayList<String>();
         final var selectedTabs = new ArrayList<String>();
         final var visibleText = new java.util.LinkedHashSet<String>();
@@ -617,6 +619,19 @@ public final class FxDriverAgent {
                 final var text = truncate(textOf(node), 160);
                 if (!text.isBlank() && visibleText.size() < 40) {
                     visibleText.add(text);
+                }
+                if (isSummaryValueControl(node)) {
+                    addCapped(controls, summaryValueControlJson(window, node), 24);
+                }
+                final var items = menuItems(node);
+                if (!items.isEmpty()) {
+                    addCapped(
+                            menus,
+                            summaryNodeOpen(window, node)
+                                    + ",\"items\":["
+                                    + jsonStrings(menuItemPaths(items))
+                                    + "]}",
+                            16);
                 }
                 if (node instanceof ButtonBase button) {
                     addCapped(
@@ -685,6 +700,10 @@ public final class FxDriverAgent {
                 + String.join(",", buttons)
                 + "],\"textFields\":["
                 + String.join(",", textFields)
+                + "],\"controls\":["
+                + String.join(",", controls)
+                + "],\"menus\":["
+                + String.join(",", menus)
                 + "],\"tables\":["
                 + String.join(",", tables)
                 + "],\"selectedTabs\":["
@@ -694,6 +713,59 @@ public final class FxDriverAgent {
                 + ",\"visibleTextSample\":["
                 + jsonStrings(new ArrayList<>(visibleText))
                 + "]}";
+    }
+
+    private static boolean isSummaryValueControl(final Node node) {
+        return node instanceof Toggle
+                || node instanceof ChoiceBox<?>
+                || node instanceof ComboBoxBase<?>
+                || node instanceof Spinner<?>
+                || node instanceof Slider;
+    }
+
+    private static String summaryValueControlJson(final Window window, final Node node) {
+        final var fields = new ArrayList<String>();
+        if (node instanceof Toggle toggle) {
+            fields.add("\"selected\":" + toggle.isSelected());
+        }
+        if (node instanceof ChoiceBox<?> choice) {
+            addString(fields, "value", String.valueOf(choice.getValue()));
+        } else if (node instanceof ComboBoxBase<?> combo) {
+            addString(fields, "value", String.valueOf(combo.getValue()));
+            fields.add("\"showing\":" + combo.isShowing());
+        } else if (node instanceof Spinner<?> spinner) {
+            addString(fields, "value", String.valueOf(spinner.getValue()));
+        } else if (node instanceof Slider slider) {
+            fields.add("\"value\":" + jsonNumber(slider.getValue()));
+        }
+        return summaryNodeOpen(window, node)
+                + ",\"kind\":\""
+                + semanticKind(node)
+                + "\""
+                + (fields.isEmpty() ? "" : "," + String.join(",", fields))
+                + "}";
+    }
+
+    private static List<String> menuItemPaths(final List<MenuItem> items) {
+        final var paths = new ArrayList<String>();
+        addMenuItemPaths(paths, items, "");
+        return paths;
+    }
+
+    private static void addMenuItemPaths(
+            final List<String> paths, final List<MenuItem> items, final String prefix) {
+        for (final var item : items) {
+            if (paths.size() >= 24) {
+                return;
+            }
+            final var text = item.getText() == null ? "" : item.getText();
+            final var path = prefix + text;
+            if (item instanceof Menu menu && !menu.getItems().isEmpty()) {
+                addMenuItemPaths(paths, menu.getItems(), path + " > ");
+            } else {
+                paths.add(path);
+            }
+        }
     }
 
     private static String orientationWindowJson(final Window window) {
@@ -1645,7 +1717,7 @@ public final class FxDriverAgent {
             throw new IllegalArgumentException(
                     "setText/type require value; text is a selector field");
         }
-        return extractString(request, "value");
+        return Json.scalar(request, "value");
     }
 
     private static int traceMs(final String request) {

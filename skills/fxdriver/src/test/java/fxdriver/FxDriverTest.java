@@ -36,6 +36,9 @@ final class FxDriverTest {
         assertTrue(Json.hasKey(json, "ok"));
         assertTrue(Json.booleanValue(json, "ok", false));
         assertEquals("a\nb", Json.string(json, "name"));
+        assertEquals("a\nb", Json.scalar(json, "name"));
+        assertEquals("125.5", Json.scalar("{\"value\":125.5}", "value"));
+        assertEquals("true", Json.scalar("{\"value\":true}", "value"));
         assertEquals(java.util.List.of("Button", "TextField"), Json.stringArray(json, "types"));
         assertEquals("\"a\",\"b\"", Json.strings(java.util.List.of("a", "b")));
         assertFalse(Json.hasKey("{\"message\":\"port\"}", "port"));

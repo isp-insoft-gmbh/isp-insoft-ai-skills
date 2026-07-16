@@ -37,7 +37,7 @@ final class FxDriverFormsIT {
         assertOk("clear", "{\"nodeId\":\"profile-notes\"}");
         assertOk("setValue", "{\"nodeId\":\"theme-choice\",\"value\":\"Dark\"}");
         assertOk("setValue", "{\"nodeId\":\"review-date\",\"value\":\"2026-07-16\"}");
-        assertOk("setValue", "{\"nodeId\":\"zoom-level\",\"value\":\"125\"}");
+        assertOk("setValue", "{\"nodeId\":\"zoom-level\",\"value\":125}");
         assertOk("increment", "{\"nodeId\":\"retention-days\",\"steps\":2}");
         assertOk("showPopup", "{\"nodeId\":\"density-combo\"}");
         assertOk("hidePopup", "{\"nodeId\":\"density-combo\"}");
@@ -78,6 +78,15 @@ final class FxDriverFormsIT {
 
     @Test
     void preservesRedactionAndStateDiagnostics() throws Exception {
+        final var summary = call("snapshotSummary", "{}");
+        assertTrue(summary.contains("\"controls\":"), summary);
+        assertTrue(summary.contains("\"id\":\"theme-choice\""), summary);
+        assertTrue(summary.contains("\"value\":\"System\""), summary);
+        assertTrue(summary.contains("\"id\":\"retention-days\""), summary);
+        assertTrue(summary.contains("\"value\":\"30\""), summary);
+        assertTrue(summary.contains("\"id\":\"notifications-enabled\""), summary);
+        assertTrue(summary.contains("\"selected\":true"), summary);
+
         final var snapshot = call("snapshot", "{}");
         assertTrue(snapshot.contains("\"id\":\"profile-password\""), snapshot);
         assertTrue(snapshot.contains("••••"), snapshot);

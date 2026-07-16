@@ -37,7 +37,9 @@ export FXDRIVER_TOKEN=<printed-token>
 ```
 
 Current launch mode injects `-javaagent` after `java` and supports direct Java
-commands only.
+commands only. It supervises the child and blocks until the app exits. Run it
+as a persistent/background process, capture its first JSON stdout line, and keep
+the launcher alive: killing it also kills the app.
 
 Example launch JSON:
 
@@ -90,6 +92,20 @@ java -jar @fxdriver.skill.jar@ rpc <port> click '{"nodeId":"save","highlightMs":
 ```
 
 `highlightMs:0` disables trace for that action.
+
+### `run`, batch, and `mark`
+
+Group dependent actions with `run`; each step uses `op` (or `method`) plus the
+normal method parameters. It stops on the first failed step unless
+`continueOnError:true`. `returnState:"compact"` adds bounded state.
+
+```sh
+java -jar @fxdriver.skill.jar@ rpc <port> run '{"steps":[{"op":"setText","nodeId":"name","value":"Ada"},{"op":"wait","textExact":"Ada"}],"returnState":"compact"}'
+java -jar @fxdriver.skill.jar@ rpc <port> mark '{}'
+```
+
+The HTTP endpoint also accepts a raw JSON-RPC request array as a batch. `mark`
+visually marks showing stages and needs no parameters.
 
 ### `snapshot`
 
@@ -172,13 +188,15 @@ java -jar @fxdriver.skill.jar@ snapshot <port> --summary
 ```
 
 The CLI summary command returns a compact first view. It caps windows at 8,
-buttons at 24, text fields at 16, tables at 12, selected tabs at 12, and the
-distinct visible-text sample at 40 strings. Integration tests enforce a 16 KiB
+buttons at 24, text fields at 16, value controls at 24, menus at 16, tables at
+12, selected tabs at 12, and the distinct visible-text sample at 40 strings. Integration tests enforce a 16 KiB
 response bound for the focused fixture.
 
 - `windows[]`: window id/title/focus/bounds.
 - `buttons[]`: visible `ButtonBase` controls with text and disabled state.
 - `textFields[]`: text inputs with value/prompt/editability.
+- `controls[]`: toggles and choice/date/spinner/range values.
+- `menus[]`: menu controls and context-menu targets with nested item paths.
 - `tables[]`: visible `TableView` and `TreeTableView` row/column summaries.
 - `selectedTabs[]`: selected tab text per visible `TabPane`.
 - `focusedNode`: target metadata or `null`.
@@ -262,6 +280,19 @@ controls with a direct value such as `ChoiceBox`, `ComboBox`, `DatePicker`,
 `Slider`, and text-like value controls. Use `selectIndex` for indexed selection
 in list/table/tree-style controls. Use `selectListItem` for `ListView` by item
 text. A generic `select` method is intentionally unsupported.
+
+### Choice, popup, and step controls
+
+```sh
+java -jar @fxdriver.skill.jar@ rpc <port> setValue '{"nodeId":"theme","value":"Dark"}'
+java -jar @fxdriver.skill.jar@ rpc <port> showPopup '{"nodeId":"density"}'
+java -jar @fxdriver.skill.jar@ rpc <port> hidePopup '{"nodeId":"density"}'
+java -jar @fxdriver.skill.jar@ rpc <port> increment '{"nodeId":"days","steps":5}'
+java -jar @fxdriver.skill.jar@ rpc <port> decrement '{"nodeId":"days","steps":2}'
+```
+
+`setValue` supports choice/combo/date/range/spinner controls. Increment and
+decrement default to one step.
 
 ### `tableCell`
 

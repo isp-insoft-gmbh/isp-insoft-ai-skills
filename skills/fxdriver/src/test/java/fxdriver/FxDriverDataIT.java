@@ -174,6 +174,14 @@ final class FxDriverDataIT {
         assertTrue(summary.contains("\"windows\":"), summary);
         assertTrue(summary.contains("\"buttons\":"), summary);
         assertTrue(summary.contains("\"textFields\":"), summary);
+        assertTrue(summary.contains("\"menus\":"), summary);
+        assertTrue(summary.contains("File > Save Workspace"), summary);
+        assertTrue(summary.contains("\"id\":\"project-actions\""), summary);
+        assertTrue(summary.contains("\"items\":[\"Delete\",\"Delete permanently\"]"), summary);
+        assertTrue(summary.contains("\"id\":\"project-more-actions\""), summary);
+        assertTrue(summary.contains("\"items\":[\"Export\"]"), summary);
+        assertTrue(summary.contains("\"id\":\"project-table\""), summary);
+        assertTrue(summary.contains("\"items\":[\"Archive\"]"), summary);
         assertTrue(summary.contains("\"tables\":"), summary);
         assertTrue(summary.contains("\"selectedTabs\":"), summary);
         assertTrue(summary.contains("\"focusedNode\":"), summary);

@@ -88,6 +88,25 @@ final class Json {
         return decodeString(body, quote, stringEnd(body, quote));
     }
 
+    static String scalar(final String body, final String key) {
+        final var colon = fieldColon(body, key);
+        if (colon < 0) {
+            return "";
+        }
+        var start = colon + 1;
+        while (start < body.length() && Character.isWhitespace(body.charAt(start))) {
+            start++;
+        }
+        if (start < body.length() && body.charAt(start) == '"') {
+            return decodeString(body, start, stringEnd(body, start));
+        }
+        var end = start;
+        while (end < body.length() && ",}]\n\r\t ".indexOf(body.charAt(end)) < 0) {
+            end++;
+        }
+        return body.substring(start, end);
+    }
+
     static String requiredString(final String json, final String key) throws IOException {
         if (!hasKey(json, key)) {
             throw new IOException("missing JSON field: " + key);

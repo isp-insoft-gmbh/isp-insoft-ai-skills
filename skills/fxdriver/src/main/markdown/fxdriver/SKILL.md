@@ -1,92 +1,42 @@
 ---
 name: fxdriver
-description:
-  "Drive JavaFX desktop apps through fxdriver JSON-RPC: attach to a running JVM,
-  inspect snapshots, choose selectors, click/type/wait/assert, capture
-  screenshots, and debug UI flows. Use when testing or automating JavaFX apps
-  with fxdriver."
+description: "Drive and inspect JavaFX apps through fxdriver JSON-RPC. Use for JavaFX UI automation, assertions, screenshots, and debugging."
 license: MIT
-compatibility:
-  "fxdriver @project.version@. Requires JDK @maven.compiler.release@+."
+compatibility: "fxdriver @project.version@. Requires JDK @maven.compiler.release@+."
 ---
 
 # fxdriver
 
-Use fxdriver as a low-level JavaFX driver. It observes public JavaFX UI state
-and performs requested actions. You decide test policy, assertions, visual
-quality judgments, and app-specific workflows.
+Drive JavaFX UI only; native dialogs and OS/global input need another tool.
 
-## Core loop
+## Loop
 
-1. Ensure target JavaFX app is running.
-2. Attach fxdriver to its JVM PID.
-3. Snapshot UI.
-4. Pick stable selectors (`nodeId`, `textExact`, `type`, `role`, `eid`).
-5. Act: `click`/`fire` buttons, `setText`/`type` fields, `setValue` or
-   `selectIndex` for choice/range/table/tree controls, `fireMenuItem` for menus,
-   and `key` for real keystrokes (Enter/Tab/chords).
-6. Wait/assert.
-7. Capture screenshot when uncertain or after visual changes; use
-   `videoStart`/`videoStep`/`videoStop` to record a whole run as GIF or APNG
-   with a stable canvas and native step titles.
-8. Use events/logs to explain failures.
+1. Start with `launch` or attach to a PID.
+2. Call `capabilities`, then `snapshot --summary`; use full `snapshot` only when needed.
+3. Prefer `nodeId`, then `textExact`, `eid`, role, or text. `selectorPath` is diagnostic, never a selector.
+4. Act with the control-specific method: `fire`/`click`, `setText`/`type`, `setValue`, `selectIndex`, `fireMenuItem`, `tableCell`, or `key`.
+5. `wait`/`assert` the result. Capture and read screenshots for visual claims.
+6. Save `events` on failure; call `shutdown` and terminate launched apps.
 
-## Required references
+## Launch lifecycle
 
-Read these when using this skill:
-
-- `references/protocol.md` — JSON-RPC methods and selector forms.
-- `references/workflow.md` — recommended observe/act/wait loop.
-- `references/failures.md` — verified broken-flow diagnostics and recovery
-  examples.
-- `references/visual.md` — screenshot, image summary, and diff usage.
-- `references/troubleshooting.md` — attach/Wayland/selector/debug notes.
-
-Examples:
-
-- `examples/basic-flow.md`
-- `examples/duplicate-review-flow.md`
-
-## Runtime
-
-Use the packaged CLI from this skill directory:
+`launch` supervises the app and blocks until it exits. Run it as a long-lived background process, redirect stdout/stderr, and wait for its first JSON line. Do not timeout or kill the launcher while driving the app: its shutdown hook kills the app.
 
 ```sh
-java -jar @fxdriver.skill.jar@
+java -jar @fxdriver.skill.jar@ launch --quiet -- java [options] app.Main > target/fxdriver-launch.json 2> target/fxdriver-launch.err &
 ```
 
-fxdriver @project.version@ requires JDK @maven.compiler.release@+. It is
-compiled and tested against JavaFX @javafx.version@; target apps provide their
-own JavaFX runtime.
+The JSON line contains `pid`, `port`, and `token`. Pass the token as the final CLI argument or `FXDRIVER_TOKEN`.
 
-## Rules for agents
+## Essential rules
 
-- Prefer stable selectors: `nodeId` / `#id`, `textExact`, `eid`, `role`, then
-  text contains.
-- If important controls have no stable node ids, ask permission to add minimal
-  semantic JavaFX ids to the app under test. Treat ids as low-risk, persistent
-  testability improvements: add them only where they make the requested and
-  likely future navigation meaningfully more stable; follow local naming/style;
-  keep them in the app unless the human asks otherwise. Never mutate app code
-  silently.
-- Use `value` for `setText`/`type` payloads. `text` is a selector field, not an
-  input payload.
-- `click`/`fire` drive `ButtonBase` controls and `ListView`; use `setValue`,
-  `selectIndex`, and control-specific methods for choice, picker, range, table,
-  tree, and tree-table controls. Use `fireMenuItem` for `MenuBar`,
-  `MenuButton`, `SplitMenuButton`, and context menus. For keyboard-only
-  interactions (submit with Enter, navigate with Tab/arrows, trigger
-  accelerators), use `key`.
-- Do not rely only on JSON assertions for visual quality. Read screenshots when
-  layout/colors are under review.
-- For whole-flow videos, prefer `canvas:"fixed"` with explicit `width`/`height`,
-  absolute output paths, and `titleMode:"band"` plus `videoStep` calls before
-  major phases. Use `quality:"high"` when text/color fidelity matters; keep the
-  default GIF output when maximum player compatibility matters.
-- Do not invent high-level policy checks inside fxdriver. Use primitives
-  (`snapshot`, `screenshot`, `image-diff`, semantic state) and reason in the
-  agent/test layer.
-- If an action changes UI, follow with `wait`/`assert` and usually a `snapshot`
-  or `screenshot`.
-- Keep artifacts in project-local target/output dirs, not `/tmp`, unless caller
-  requests otherwise.
+- Input payloads use `value`; `text` selects a node.
+- `key` emits synthetic JavaFX events, not OS keystrokes.
+- Screenshot paths resolve in the app working directory; use absolute paths only when it differs from your shell.
+- `ok:true` means the primitive ran, not that intended state changed—verify afterward.
+- Add semantic JavaFX ids only with permission.
+- Parse JSON with `jq` or Node, not Python.
+- Trust observable UI; do not decompile app/JAR bytecode unless driver evidence cannot answer.
+- Video and modal-safe asynchronous dispatch are unavailable.
+
+Read `references/protocol.md` only when exact JSON is needed; read `references/troubleshooting.md` only after a failure.
