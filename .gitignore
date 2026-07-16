@@ -10,3 +10,5 @@ node_modules/
 .mise.local.toml
 
 docs/super
+
+.pi/tune
