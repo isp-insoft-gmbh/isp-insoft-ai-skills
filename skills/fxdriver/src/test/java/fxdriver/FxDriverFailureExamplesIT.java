@@ -5,13 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -32,40 +27,45 @@ final class FxDriverFailureExamplesIT {
             final var endpoint = waitForEndpoint(out.resolve("launch.out"));
 
             final var typoWait =
-                    rpc(endpoint, "wait", "{\"text\":\"Probe buton\",\"timeoutMs\":250}");
+                    rpc(endpoint, "wait", "{\"text\":\"Refresh toolbr\",\"timeoutMs\":250}");
             assertTrue(typoWait.contains("\"ok\":false"), typoWait);
             assertTrue(typoWait.contains("\"TIMEOUT\""), typoWait);
-            assertFalse(typoWait.contains("\"nearMatches\""), typoWait);
+            assertTrue(typoWait.contains("\"nearMatches\""), typoWait);
+            assertTrue(typoWait.contains("Refresh toolbar"), typoWait);
+            assertTrue(occurrences(typoWait, "\"selectorPath\"") <= 5, typoWait);
             final var typoFollowup = rpc(endpoint, "snapshot", "{}");
-            assertTrue(typoFollowup.contains("Probe button"), typoFollowup);
+            assertTrue(typoFollowup.contains("Refresh toolbar"), typoFollowup);
 
             final var wrongPayload =
                     rpc(
                             endpoint,
                             "setText",
-                            "{\"nodeId\":\"probe-field\",\"text\":\"wrong field\"}");
+                            "{\"nodeId\":\"project-filter\",\"text\":\"wrong field\"}");
             assertTrue(wrongPayload.contains("setText/type require value"), wrongPayload);
 
             final var clickedChoice =
-                    rpc(endpoint, "click", "{\"nodeId\":\"probe-choice\",\"timeoutMs\":1000}");
+                    rpc(endpoint, "click", "{\"nodeId\":\"project-view\",\"timeoutMs\":1000}");
             assertTrue(clickedChoice.contains("\"ok\":true"), clickedChoice);
             final var blueStillMissing =
-                    rpc(endpoint, "wait", "{\"text\":\"blue\",\"timeoutMs\":250}");
+                    rpc(endpoint, "wait", "{\"text\":\"Archived only\",\"timeoutMs\":250}");
             assertTrue(blueStillMissing.contains("\"ok\":false"), blueStillMissing);
             final var selectedChoice =
-                    rpc(endpoint, "setValue", "{\"nodeId\":\"probe-choice\",\"value\":\"blue\"}");
+                    rpc(
+                            endpoint,
+                            "setValue",
+                            "{\"nodeId\":\"project-view\",\"value\":\"Archived only\"}");
             assertTrue(selectedChoice.contains("\"ok\":true"), selectedChoice);
             assertTrue(
-                    rpc(endpoint, "wait", "{\"text\":\"blue\",\"timeoutMs\":1000}")
+                    rpc(endpoint, "wait", "{\"text\":\"Archived only\",\"timeoutMs\":1000}")
                             .contains("\"ok\":true"));
 
             final var snapshot = rpc(endpoint, "snapshot", "{}");
             assertTrue(
                     snapshot.contains(
-                            "\"type\":\"Button\",\"id\":\"\",\"nodeId\":\"\",\"text\":\"Tool"
-                                    + " action\""),
+                            "\"type\":\"Button\",\"id\":\"\",\"nodeId\":\"\",\"text\":\"Refresh"
+                                    + " toolbar\""),
                     snapshot);
-            assertFalse(snapshot.contains("\"id\":\"probe-tool-action\""), snapshot);
+            assertFalse(snapshot.contains("\"id\":\"project-toolbar-refresh\""), snapshot);
 
             final var before = out.resolve("before.png").toAbsolutePath();
             final var after = out.resolve("after.png").toAbsolutePath();
@@ -75,12 +75,12 @@ final class FxDriverFailureExamplesIT {
                             .contains("\"source\":"));
             assertTrue(Files.isRegularFile(before));
             assertTrue(
-                    rpc(endpoint, "scrollToIndex", "{\"nodeId\":\"probe-list\",\"index\":2}")
+                    rpc(endpoint, "scrollToIndex", "{\"nodeId\":\"recent-projects\",\"index\":2}")
                             .contains("\"ok\":true"));
-            final var listClick = rpc(endpoint, "click", "{\"textExact\":\"charlie\"}");
+            final var listClick = rpc(endpoint, "click", "{\"textExact\":\"Cygnus\"}");
             assertTrue(listClick.contains("\"ok\":true"), listClick);
             assertTrue(
-                    rpc(endpoint, "wait", "{\"text\":\"clicked charlie\",\"timeoutMs\":2000}")
+                    rpc(endpoint, "wait", "{\"text\":\"Opened Cygnus\",\"timeoutMs\":2000}")
                             .contains("\"ok\":true"));
             assertTrue(
                     rpc(endpoint, "screenshot", "{\"path\":\"" + jsonPath(after) + "\"}")
@@ -127,60 +127,20 @@ final class FxDriverFailureExamplesIT {
     }
 
     private static List<String> probeCommand() {
-        final var command = new ArrayList<String>();
-        command.add(java());
-        addProbeJvmArgs(command);
-        command.add("--enable-native-access=javafx.graphics");
-        if (Runtime.version().feature() >= 24) {
-            command.add("--sun-misc-unsafe-memory-access=allow");
-        }
-        command.add("--module-path");
-        command.add(javafxModulePath());
-        command.add("--add-modules");
-        command.add(javafxModules());
-        command.add("-cp");
-        command.add(testClasspath());
-        command.add("fxdriver.FxDriverProbeApp");
-        return command;
+        return FxDriverTestHarness.applicationCommand(FxDriverDataApp.class);
     }
 
     private static Endpoint waitForEndpoint(final Path output) throws Exception {
-        final var deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
-        while (System.nanoTime() < deadline) {
-            if (Files.isRegularFile(output)) {
-                final var text = Files.readString(output);
-                final var port = PORT.matcher(text);
-                final var token = TOKEN.matcher(text);
-                if (port.find() && token.find()) {
-                    return new Endpoint(Integer.parseInt(port.group(1)), token.group(1));
-                }
-            }
-            Thread.sleep(100);
-        }
-        throw new AssertionError(
-                "fxdriver endpoint not printed; output=" + Files.readString(output));
+        final var endpoint = FxDriverTestHarness.awaitEndpoint(output);
+        return new Endpoint(endpoint.port(), endpoint.token());
     }
 
     private static String rpc(final Endpoint endpoint, final String method, final String params)
             throws Exception {
-        final var request =
-                HttpRequest.newBuilder()
-                        .uri(URI.create("http://127.0.0.1:" + endpoint.port() + "/rpc"))
-                        .timeout(Duration.ofSeconds(10))
-                        .header("content-type", "application/json")
-                        .header("fxdriver-token", endpoint.token())
-                        .POST(
-                                HttpRequest.BodyPublishers.ofString(
-                                        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\""
-                                                + method
-                                                + "\",\"params\":"
-                                                + params
-                                                + "}"))
-                        .build();
-        final var response =
-                HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
-        assertEquals(200, response.statusCode());
-        return response.body();
+        return FxDriverTestHarness.rpc(
+                new FxDriverTestHarness.Endpoint(endpoint.port(), endpoint.token()),
+                method,
+                params);
     }
 
     private static void shutdown(final Process process, final Path output) throws Exception {
@@ -195,16 +155,7 @@ final class FxDriverFailureExamplesIT {
     }
 
     private static void destroy(final Process process) throws InterruptedException {
-        process.descendants().forEach(child -> child.destroyForcibly());
-        process.destroy();
-        process.waitFor(5, TimeUnit.SECONDS);
-        if (process.isAlive()) {
-            process.descendants().forEach(child -> child.destroyForcibly());
-            process.destroyForcibly();
-            process.waitFor(10, TimeUnit.SECONDS);
-        }
-        process.descendants().forEach(child -> child.destroyForcibly());
-        assertFalse(process.isAlive());
+        FxDriverTestHarness.destroy(process);
     }
 
     private static Optional<Endpoint> maybeEndpoint(final Path output) throws IOException {
@@ -218,6 +169,16 @@ final class FxDriverFailureExamplesIT {
             return Optional.empty();
         }
         return Optional.of(new Endpoint(Integer.parseInt(port.group(1)), token.group(1)));
+    }
+
+    private static int occurrences(final String text, final String needle) {
+        var count = 0;
+        var at = 0;
+        while ((at = text.indexOf(needle, at)) >= 0) {
+            count++;
+            at += needle.length();
+        }
+        return count;
     }
 
     private static String jsonPath(final Path path) {
@@ -252,8 +213,7 @@ final class FxDriverFailureExamplesIT {
     }
 
     private static String java() {
-        return Path.of(System.getProperty("java.home"), "bin", isWindows() ? "java.exe" : "java")
-                .toString();
+        return FxDriverTestHarness.java();
     }
 
     private static void addProbeJvmArgs(final List<String> command) {

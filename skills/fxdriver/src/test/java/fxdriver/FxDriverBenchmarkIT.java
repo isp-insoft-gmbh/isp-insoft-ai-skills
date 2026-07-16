@@ -1,22 +1,17 @@
 package fxdriver;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.io.IOException;
-import java.net.URI;
 import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 
@@ -59,7 +54,7 @@ final class FxDriverBenchmarkIT {
                                             rpc(
                                                     endpoint,
                                                     "setText",
-                                                    "{\"nodeId\":\"probe-field\",\"value\":\"old-"
+                                                    "{\"nodeId\":\"project-filter\",\"value\":\"old-"
                                                             + index
                                                             + "\"}");
                                     final var snapshot = rpc(endpoint, "snapshot", "{}");
@@ -71,7 +66,7 @@ final class FxDriverBenchmarkIT {
                                         rpc(
                                                         endpoint,
                                                         "setText",
-                                                        "{\"nodeId\":\"probe-field\",\"value\":\"state-"
+                                                        "{\"nodeId\":\"project-filter\",\"value\":\"state-"
                                                                 + index
                                                                 + "\",\"returnState\":\"compact\"}")
                                                 .bytes()));
@@ -81,7 +76,7 @@ final class FxDriverBenchmarkIT {
                                         rpc(
                                                         endpoint,
                                                         "run",
-                                                        "{\"steps\":[{\"op\":\"setText\",\"nodeId\":\"probe-field\",\"value\":\"run-"
+                                                        "{\"steps\":[{\"op\":\"setText\",\"nodeId\":\"project-filter\",\"value\":\"run-"
                                                                 + index
                                                                 + "\"},{\"op\":\"wait\",\"text\":\"run-"
                                                                 + index
@@ -184,49 +179,23 @@ final class FxDriverBenchmarkIT {
     }
 
     private static List<String> probeCommand() {
-        final var command = new ArrayList<String>();
-        command.add(java());
-        addProbeJvmArgs(command);
-        command.add("--enable-native-access=javafx.graphics");
-        if (Runtime.version().feature() >= 24) {
-            command.add("--sun-misc-unsafe-memory-access=allow");
-        }
-        command.add("--module-path");
-        command.add(javafxModulePath());
-        command.add("--add-modules");
-        command.add(javafxModules());
-        command.add("-cp");
-        command.add(testClasspath());
-        command.add("fxdriver.FxDriverProbeApp");
-        return command;
+        return FxDriverTestHarness.applicationCommand(FxDriverDataApp.class);
     }
 
     private static Endpoint waitForEndpoint(final Path output) throws Exception {
-        final var deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
-        while (System.nanoTime() < deadline) {
-            if (Files.isRegularFile(output)) {
-                final var text = Files.readString(output);
-                final var port = PORT.matcher(text);
-                final var token = TOKEN.matcher(text);
-                if (port.find() && token.find()) {
-                    return new Endpoint(Integer.parseInt(port.group(1)), token.group(1));
-                }
-            }
-            Thread.sleep(50);
-        }
-        throw new AssertionError(
-                "fxdriver endpoint not printed; output=" + Files.readString(output));
+        final var endpoint = FxDriverTestHarness.awaitEndpoint(output);
+        return new Endpoint(endpoint.port(), endpoint.token());
     }
 
     private static void waitForProbe(final Endpoint endpoint) throws Exception {
         final var deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
         while (System.nanoTime() < deadline) {
-            if (rpc(endpoint, "query", "{\"limit\":80}").body().contains("probe-field")) {
+            if (rpc(endpoint, "query", "{\"limit\":80}").body().contains("project-filter")) {
                 return;
             }
             Thread.sleep(100);
         }
-        throw new AssertionError("probe field did not appear");
+        throw new AssertionError("project filter did not appear");
     }
 
     private static int oldRealisticFlow(final Endpoint endpoint, final int index) throws Exception {
@@ -235,41 +204,24 @@ final class FxDriverBenchmarkIT {
                 actionThenSnapshot(
                         endpoint,
                         "setText",
-                        "{\"nodeId\":\"probe-field\",\"value\":\"realistic-old-" + index + "\"}");
+                        "{\"nodeId\":\"project-filter\",\"value\":\"realistic-old-"
+                                + index
+                                + "\"}");
         bytes +=
                 actionThenSnapshot(
                         endpoint,
                         "selectIndex",
-                        "{\"nodeId\":\"probe-list\",\"index\":" + (index % 3) + "}");
+                        "{\"nodeId\":\"recent-projects\",\"index\":" + (index % 3) + "}");
         bytes +=
                 actionThenSnapshot(
                         endpoint,
                         "selectIndex",
-                        "{\"nodeId\":\"probe-table\",\"index\":" + (index % 2) + "}");
+                        "{\"nodeId\":\"project-table\",\"index\":" + (index % 3) + "}");
         bytes +=
                 actionThenSnapshot(
-                        endpoint, "scrollToIndex", "{\"nodeId\":\"probe-tree\",\"index\":1}");
-        bytes += actionThenSnapshot(endpoint, "expand", "{\"nodeId\":\"probe-titled\"}");
-        bytes += actionThenSnapshot(endpoint, "collapse", "{\"nodeId\":\"probe-titled\"}");
-        bytes +=
-                actionThenSnapshot(
-                        endpoint,
-                        "setValue",
-                        "{\"nodeId\":\"probe-choice\",\"value\":\"" + choiceValue(index) + "\"}");
-        bytes +=
-                actionThenSnapshot(
-                        endpoint,
-                        "setValue",
-                        "{\"nodeId\":\"probe-slider\",\"value\":\"" + (20 + index) + "\"}");
-        bytes += actionThenSnapshot(endpoint, "increment", "{\"nodeId\":\"probe-spinner\"}");
-        bytes += actionThenSnapshot(endpoint, "decrement", "{\"nodeId\":\"probe-spinner\"}");
-        bytes += actionThenSnapshot(endpoint, "showPopup", "{\"nodeId\":\"probe-combo\"}");
-        bytes += actionThenSnapshot(endpoint, "hidePopup", "{\"nodeId\":\"probe-combo\"}");
-        bytes +=
-                actionThenSnapshot(
-                        endpoint,
-                        "webExecuteScript",
-                        "{\"nodeId\":\"probe-web\",\"script\":\"document.title\"}");
+                        endpoint, "scrollToIndex", "{\"nodeId\":\"project-tree\",\"index\":1}");
+        bytes += actionThenSnapshot(endpoint, "expand", "{\"nodeId\":\"project-details\"}");
+        bytes += actionThenSnapshot(endpoint, "collapse", "{\"nodeId\":\"project-details\"}");
         return bytes;
     }
 
@@ -284,33 +236,19 @@ final class FxDriverBenchmarkIT {
 
     private static String realisticRunParams(final int index) {
         return "{\"steps\":["
-                + "{\"op\":\"setText\",\"nodeId\":\"probe-field\",\"value\":\"realistic-run-"
+                + "{\"op\":\"setText\",\"nodeId\":\"project-filter\",\"value\":\"realistic-run-"
                 + index
                 + "\"},"
-                + "{\"op\":\"selectIndex\",\"nodeId\":\"probe-list\",\"index\":"
+                + "{\"op\":\"selectIndex\",\"nodeId\":\"recent-projects\",\"index\":"
                 + (index % 3)
                 + "},"
-                + "{\"op\":\"selectIndex\",\"nodeId\":\"probe-table\",\"index\":"
-                + (index % 2)
+                + "{\"op\":\"selectIndex\",\"nodeId\":\"project-table\",\"index\":"
+                + (index % 3)
                 + "},"
-                + "{\"op\":\"scrollToIndex\",\"nodeId\":\"probe-tree\",\"index\":1},"
-                + "{\"op\":\"expand\",\"nodeId\":\"probe-titled\"},"
-                + "{\"op\":\"collapse\",\"nodeId\":\"probe-titled\"},"
-                + "{\"op\":\"setValue\",\"nodeId\":\"probe-choice\",\"value\":\""
-                + choiceValue(index)
-                + "\"},"
-                + "{\"op\":\"setValue\",\"nodeId\":\"probe-slider\",\"value\":\""
-                + (20 + index)
-                + "\"},{\"op\":\"increment\",\"nodeId\":\"probe-spinner\"},"
-                + "{\"op\":\"decrement\",\"nodeId\":\"probe-spinner\"},"
-                + "{\"op\":\"showPopup\",\"nodeId\":\"probe-combo\"},"
-                + "{\"op\":\"hidePopup\",\"nodeId\":\"probe-combo\"},"
-                + "{\"op\":\"webExecuteScript\",\"nodeId\":\"probe-web\",\"script\":\"document.title\"}"
+                + "{\"op\":\"scrollToIndex\",\"nodeId\":\"project-tree\",\"index\":1},"
+                + "{\"op\":\"expand\",\"nodeId\":\"project-details\"},"
+                + "{\"op\":\"collapse\",\"nodeId\":\"project-details\"}"
                 + "],\"returnState\":\"compact\"}";
-    }
-
-    private static String choiceValue(final int index) {
-        return List.of("red", "green", "blue").get(index % 3);
     }
 
     private static List<String> coveredMethods() {
@@ -322,38 +260,19 @@ final class FxDriverBenchmarkIT {
                 "scrollToIndex",
                 "expand",
                 "collapse",
-                "setValue",
-                "increment",
-                "decrement",
-                "showPopup",
-                "hidePopup",
-                "webExecuteScript",
                 "run",
                 "shutdown");
     }
 
     private static RpcResult rpc(final Endpoint endpoint, final String method, final String params)
             throws Exception {
-        final var body =
-                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\""
-                        + method
-                        + "\",\"params\":"
-                        + params
-                        + "}";
-        final var request =
-                HttpRequest.newBuilder()
-                        .uri(URI.create("http://127.0.0.1:" + endpoint.port() + "/rpc"))
-                        .timeout(Duration.ofSeconds(60))
-                        .header("content-type", "application/json")
-                        .header("fxdriver-token", endpoint.token())
-                        .POST(HttpRequest.BodyPublishers.ofString(body))
-                        .build();
-        final var response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
-        assertEquals(200, response.statusCode());
+        final var response =
+                FxDriverTestHarness.rawRpc(
+                        new FxDriverTestHarness.Endpoint(endpoint.port(), endpoint.token()),
+                        method,
+                        params);
         assertFalse(response.body().contains("\"error\""), response.body());
-        return new RpcResult(
-                response.body(),
-                response.body().getBytes(java.nio.charset.StandardCharsets.UTF_8).length);
+        return new RpcResult(response.body(), response.bytes());
     }
 
     private static Sample measure(final ThrowingIntSupplier supplier) throws Exception {
@@ -385,20 +304,11 @@ final class FxDriverBenchmarkIT {
     }
 
     private static void destroy(final Process process) throws InterruptedException {
-        process.descendants().forEach(child -> child.destroyForcibly());
-        process.destroy();
-        process.waitFor(5, TimeUnit.SECONDS);
-        if (process.isAlive()) {
-            process.descendants().forEach(child -> child.destroyForcibly());
-            process.destroyForcibly();
-            process.waitFor(10, TimeUnit.SECONDS);
-        }
-        process.descendants().forEach(child -> child.destroyForcibly());
-        assertFalse(process.isAlive());
+        FxDriverTestHarness.destroy(process);
     }
 
     private static String java() {
-        return Path.of(System.getProperty("java.home"), "bin", "java").toString();
+        return FxDriverTestHarness.java();
     }
 
     private static void addProbeJvmArgs(final List<String> command) {

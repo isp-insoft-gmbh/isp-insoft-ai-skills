@@ -32,6 +32,7 @@ public final class FxDriver {
             case "attach" -> attach(args);
             case "launch" -> launch(args);
             case "rpc" -> rpc(args);
+            case "snapshot" -> snapshot(args);
             case "screenshot" -> screenshot(args);
             case "image-summary" -> imageSummary(args);
             case "image-diff" -> imageDiff(args);
@@ -337,6 +338,40 @@ public final class FxDriver {
         }
     }
 
+    private static void snapshot(final String... args) throws Exception {
+        final var summary = args.length >= 3 && "--summary".equals(args[2]);
+        final var unknownOption = args.length >= 3 && args[2].startsWith("--") && !summary;
+        if (args.length < 2
+                || unknownOption
+                || (summary && args.length > 4)
+                || (!summary && args.length > 3)) {
+            snapshotUsage();
+            return;
+        }
+        final int port;
+        try {
+            port = Integer.parseInt(args[1]);
+        } catch (final NumberFormatException exception) {
+            snapshotUsage();
+            return;
+        }
+        final var body =
+                rpcBody(
+                        port,
+                        tokenArg(args, summary ? 3 : 2),
+                        summary ? "snapshotSummary" : "snapshot",
+                        "{}");
+        System.out.println(body);
+        if (body.contains("\"error\"")) {
+            System.exit(1);
+        }
+    }
+
+    private static void snapshotUsage() {
+        System.err.println("usage: fxdriver snapshot <port> [--summary] [token]");
+        System.exit(2);
+    }
+
     private static void screenshot(final String... args) throws Exception {
         if (args.length < 3) {
             System.err.println("usage: fxdriver screenshot <port> <path> [token]");
@@ -605,6 +640,7 @@ public final class FxDriver {
                 "       fxdriver launch [--json|--quiet] [port] -- java [java-options...]"
                         + " <main-or-jar> [args...]");
         System.err.println("       fxdriver rpc <port> <method> [params-json]");
+        System.err.println("       fxdriver snapshot <port> [--summary] [token]");
         System.err.println("       fxdriver screenshot <port> <path>");
         System.err.println("       fxdriver image-summary <path>");
         System.err.println("       fxdriver image-diff <before> <after> [diff-png]");

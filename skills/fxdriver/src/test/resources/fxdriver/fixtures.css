@@ -1,0 +1,5 @@
+.root { -fx-font-size: 13px; }
+.fixture-page { -fx-padding: 16px; -fx-spacing: 14px; }
+.fixture-section { -fx-padding: 14px; -fx-hgap: 12px; -fx-vgap: 10px; }
+.fixture-status { -fx-padding: 8px 14px; }
+.fixture-table { -fx-pref-height: 240px; }

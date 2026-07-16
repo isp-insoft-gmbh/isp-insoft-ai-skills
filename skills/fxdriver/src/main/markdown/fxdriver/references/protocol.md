@@ -171,16 +171,20 @@ unrealized rows/cells are not emitted as nodes.
 java -jar @fxdriver.skill.jar@ snapshot <port> --summary
 ```
 
-The CLI summary command returns a compact first view:
+The CLI summary command returns a compact first view. It caps windows at 8,
+buttons at 24, text fields at 16, tables at 12, selected tabs at 12, and the
+distinct visible-text sample at 40 strings. Integration tests enforce a 16 KiB
+response bound for the focused fixture.
 
-- `windows[]`: window id/index/title/focus/bounds.
-- `buttons[]`: visible `ButtonBase` controls with text.
+- `windows[]`: window id/title/focus/bounds.
+- `buttons[]`: visible `ButtonBase` controls with text and disabled state.
 - `textFields[]`: text inputs with value/prompt/editability.
 - `tables[]`: visible `TableView` and `TreeTableView` row/column summaries.
 - `selectedTabs[]`: selected tab text per visible `TabPane`.
-- `visibleTextSample[]`: bounded visible text sample for orientation.
+- `focusedNode`: target metadata or `null`.
+- `visibleTextSample[]`: bounded visible text for orientation.
 
-Use full `snapshot` when you need bounds, semantics, or raw node hierarchy.
+Use full `snapshot` when you need complete semantics or raw node hierarchy.
 
 ### `highlight`
 
@@ -238,13 +242,12 @@ java -jar @fxdriver.skill.jar@ rpc <port> key '{"key":"CTRL+S"}'
 java -jar @fxdriver.skill.jar@ rpc <port> key '{"nodeId":"search","chars":"hello"}'
 ```
 
-Sends real keystrokes as synthetic `KEY_PRESSED`/`KEY_TYPED`/`KEY_RELEASED`
-events (works headless, unlike OS-level robot keys). `key` is a single named key
-or chord — `ENTER`, `ESCAPE`/`ESC`, `TAB`, `UP`/`DOWN`/`LEFT`/`RIGHT`,
-`F1`–`F12`, letters, `CTRL+S`, `SHIFT+TAB`, `ALT+`/`META+`/`CMD+`. `chars` types
-a literal string. With a selector (`nodeId`, `textExact`, …) the target node is
-focused first; otherwise events go to the current focus owner. Returns the
-resolved key/chars and a description of the target node.
+Dispatches synthetic JavaFX `KeyEvent`s to a node; it is not OS/global input.
+`key` accepts one named key or chord such as `ENTER`, `ESCAPE`/`ESC`, `TAB`,
+`F1`, `CTRL+S`, `SHIFT+TAB`, or `META+K`. `chars` emits one `KEY_TYPED` event
+per Unicode code point. With a selector (`nodeId`, `textExact`, …), the first
+match is focused; otherwise the current JavaFX focus owner is used. The result
+contains `key`, `chars`, `sent`, and `target`; no target returns `NO_FOCUS`.
 
 ### `setValue`, `selectIndex`, `selectListItem`
 
@@ -258,7 +261,7 @@ Drives controls that `click`/`fire` cannot reliably set. Use `setValue` for
 controls with a direct value such as `ChoiceBox`, `ComboBox`, `DatePicker`,
 `Slider`, and text-like value controls. Use `selectIndex` for indexed selection
 in list/table/tree-style controls. Use `selectListItem` for `ListView` by item
-text.
+text. A generic `select` method is intentionally unsupported.
 
 ### `tableCell`
 
@@ -267,9 +270,10 @@ java -jar @fxdriver.skill.jar@ rpc <port> tableCell '{"nodeId":"projects","table
 java -jar @fxdriver.skill.jar@ rpc <port> tableCell '{"nodeId":"projects","rowIndex":2,"columnIndex":0}'
 ```
 
-Returns a `TableView` or `TreeTableView` cell by row text/row index and
-column text, id, or index. The result includes `rowIndex`, `columnIndex`,
-resolved `column`, full `rowText`, `value`, and `ok`.
+Reads `TableView` or `TreeTableView` model values by row text/row index and
+flat top-level column text, id, or index. It does not depend on realized cell
+nodes. The result includes `rowIndex`, `columnIndex`, resolved `column`, full
+`rowText`, `value`, and `ok`; failures use `NO_TABLE`, `NO_ROW`, or `NO_COLUMN`.
 
 ### `fireMenuItem`
 
@@ -279,9 +283,10 @@ java -jar @fxdriver.skill.jar@ rpc <port> fireMenuItem '{"nodeId":"actions","ite
 ```
 
 Fires `MenuBar`, `MenuButton`, `SplitMenuButton`, or context-menu items without
-showing the popup. Use `path` for nested menu traversal or `itemText` to find
-the first matching item recursively. Returns the menu kind, resolved value, and
-`fired`.
+showing a JavaFX popup. It cannot operate native menus or dialogs. Use `path`
+for nested traversal or `itemText` for exact-then-contains recursive lookup.
+The result contains `query`, `kind`, `path`, `value`, and `fired`; failures use
+`NO_MENU_ITEM` or `DISABLED`.
 
 ### `wait`
 
@@ -295,8 +300,10 @@ explicit `timeoutMs` for slow app operations. Optional predicates: `present`,
 `enabled`, `focused`, `visible`. Like the action commands, `wait` and `assert`
 only consider visible nodes unless `visible:false` is passed explicitly, so a
 satisfied `wait` means the follow-up `click`/`type` sees the same node. Failed
-waits return `ok:false` with `TIMEOUT`; take a fresh snapshot or CLI summary to
-compare visible text, ids, roles, and control state before retrying.
+waits return `ok:false` with `TIMEOUT` and up to five bounded `nearMatches`.
+Each candidate has `eid`, `type`, `id`, `text`, and diagnostic `selectorPath`.
+Near matches and selector paths explain misses; they are not supported
+selectors. Successful waits omit `nearMatches`.
 
 ### `assert`
 
@@ -323,7 +330,7 @@ fields. Use `events {"clear":true}` to read and clear in one call.
 
 ### `screenshot`
 
-CLI shortcut for first visible stage/window:
+CLI shortcut for the focused showing stage, then first showing stage:
 
 ```sh
 java -jar @fxdriver.skill.jar@ screenshot <port> target/fxdriver.png
@@ -341,67 +348,23 @@ java -jar @fxdriver.skill.jar@ rpc <port> screenshot '{"path":"/tmp/run/dialog.p
 A relative `path` resolves against the target app's working directory, not the
 caller's — pass an absolute path (or use the CLI `screenshot` subcommand, which
 absolutizes before sending). The result echoes the absolute path written. Window
-and rect targets default to the first showing stage; pass `window` with a `wid`
-from snapshot (`"w2"`) to capture another stage. `press` accepts the same
-`window` parameter to scope accelerators.
+and rect targets default to the focused showing JavaFX stage, then the first
+showing stage; pass `window` with a stage `wid` from snapshot (`"w2"`) to
+capture that exact stage. Popup window ids are rejected. `press` accepts the
+same parameter to scope accelerators.
 
 Captures optimized lossless PNG. RPC results include `path`, `bytes`, `target`,
-`image` bounds, `source` bounds/units, `scale`, `activeWindow`, and
-`visibleTextSample`. CLI screenshot prints that result plus image summary.
-Opaque screenshots may be encoded as RGB; transparent screenshots preserve
-alpha.
+`image` bounds, `source` bounds/units, `scale`, `activeWindow`, and a bounded
+`visibleTextSample` for orientation. `activeWindow` contains only id, title,
+bounds, and focused-node metadata—not a recursive snapshot. CLI screenshot
+prints that result plus image summary. Opaque screenshots may be encoded as
+RGB; transparent screenshots preserve alpha.
 
-### `videoStart`, `videoStep`, `videoStop`
+### Video and modal dispatch
 
-```sh
-java -jar @fxdriver.skill.jar@ rpc <port> videoStart '{"path":"/tmp/run/run.gif","fps":10,"canvas":"fixed","width":1280,"height":900,"titleMode":"band"}'
-java -jar @fxdriver.skill.jar@ rpc <port> videoStep '{"title":"Login"}'
-java -jar @fxdriver.skill.jar@ rpc <port> videoStop '{}'
-```
-
-Records one stage's scene into GIF by default or APNG with `quality:"high"`.
-Frames are captured on a timer and encoded as delta rects on a background
-thread: unchanged ticks cost no bytes, and the UI thread is never blocked on
-encoding (frames are dropped instead and reported as `dropped`; frame delays
-come from capture timestamps, so playback speed stays true to wall clock even
-under load). Params: `path` (resolved in the target JVM's working directory —
-prefer absolute), `fps` (default 10, clamped to 1-30), `maxMs` (hard cap,
-default 120000, clamped to 1000-3600000), `quality` (`low` GIF or `high` APNG),
-`window` (a `wid` from snapshot), `scalePercent` (clamped to 25-200, default
-100), `canvas`, `width`, `height`, `background`, `titleMode`, `titleHeight`,
-and `title`. One recording at a time: a second `videoStart` while recording
-returns an error.
-
-Canvas modes:
-
-- `canvas:"fixed"` uses explicit `width` and `height`; use this for
-  deterministic test videos.
-- `canvas:"screen"` (default) uses a stable primary-screen canvas so
-  login/splash windows do not trap the recording at their small size.
-- `canvas:"firstFrame"` preserves the older behavior where the first captured
-  frame defines the animation canvas; use only for small, single-window
-  captures or scalePercent comparisons.
-
-Every source frame is composed into the stable canvas. Oversized source frames
-are scaled down to fit and centered; smaller windows are centered on the
-`background` color (`#RRGGBB` or `#AARRGGBB`, default white).
-
-Native step titles are recorder overlays, not app UI. Set `titleMode:"band"` to
-reserve a title bar inside the video canvas, or `titleMode:"overlay"` for a
-translucent top-left label. `title` sets the initial title;
-`videoStep {"title":"..."}` changes it during recording and forces an immediate
-capture tick. `titleMode:"off"` disables drawing titles.
-
-`videoStop` returns `path`, `frames` (encoded), `captured`, `dropped`,
-`durationMs`, `bytes`, `startedAt` (epoch ms — correlate with `events`
-timestamps to map actions to video time), `canvasWidth`, `canvasHeight`,
-`canvas`, `titleMode`, `quality`, `format`, `steps`, `scaledFrames`, and `ok`.
-`ok:false` carries an error code: `NO_VIDEO` (nothing to stop), `NO_FRAMES` (no
-showing stage ever matched, no file written), `VIDEO_FAILED` (encoder error,
-e.g. unwritable path), or `VIDEO_STALLED`. Recording also finalizes on
-`shutdown` and on JVM exit. GIF is streamed, so even a killed process can leave
-the file playable through the last flushed frame. APNG is patched on close and
-requires normal finalization to be playable.
+`videoStart`, `videoStep`, and `videoStop` are not available in this phase.
+Modal-safe asynchronous action dispatch is also deferred. Check `capabilities`
+rather than assuming either API exists.
 
 ### `image-summary`
 
@@ -486,3 +449,7 @@ JSON params that map to selectors:
 { "accessible": "Save" }
 { "selector": "type=Button" }
 ```
+
+Snapshot and near-match `selectorPath` values are diagnostics only and cannot
+be passed back as selectors. Generic `select` is unsupported; use the explicit
+selection methods above.

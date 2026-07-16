@@ -52,6 +52,9 @@ Preference order:
 5. `type` for broad discovery only
 6. bare text contains only as last resort
 
+Do not copy snapshot or near-match `selectorPath` diagnostics into requests.
+They are deliberately not selectors.
+
 Verify ambiguous selectors with `highlight`:
 
 ```sh
@@ -74,8 +77,15 @@ java -jar @fxdriver.skill.jar@ rpc <port> click '{"nodeId":"find-duplicates"}'
 java -jar @fxdriver.skill.jar@ rpc <port> click '{"textExact":"Projects","untilQuietMs":500,"timeoutMs":10000}'
 java -jar @fxdriver.skill.jar@ rpc <port> setText '{"nodeId":"filter-duplicates","value":"portrait"}'
 java -jar @fxdriver.skill.jar@ rpc <port> selectListItem '{"nodeId":"duplicates-list","itemText":"portrait"}'
+java -jar @fxdriver.skill.jar@ rpc <port> key '{"nodeId":"filter-duplicates","key":"ENTER"}'
+java -jar @fxdriver.skill.jar@ rpc <port> fireMenuItem '{"nodeId":"main-menu","path":["File","Save"]}'
 java -jar @fxdriver.skill.jar@ rpc <port> tableCell '{"nodeId":"projects","tableText":"MDP_40982497","column":"Projektnummer"}'
 ```
+
+`key` is synthetic JavaFX input, not OS/global input. Menu firing resolves and
+fires the model item without showing its JavaFX popup. `tableCell` reads model
+values from flat columns. There is no generic `select`; choose the explicit
+selection method for the control.
 
 ## Wait/assert
 
@@ -88,9 +98,9 @@ java -jar @fxdriver.skill.jar@ rpc <port> assert '{"textExact":"Keep duplicates"
 
 Do not assume immediate UI update after action.
 
-If a wait fails, read the returned `ok:false`/`TIMEOUT`, then take a fresh
-summary or full snapshot and compare visible text, ids, roles, and control
-state before trying another selector.
+If a wait fails, read the returned `ok:false`/`TIMEOUT` and its at-most-five
+`nearMatches`, then take a fresh summary or full snapshot if needed. Near-match
+ids/text/types help diagnose a typo; their selector paths are not selectors.
 
 ## Visual review
 
@@ -104,24 +114,15 @@ java -jar @fxdriver.skill.jar@ screenshot <port> target/after.png
 java -jar @fxdriver.skill.jar@ image-diff target/before.png target/after.png target/diff.png
 ```
 
-Read screenshots. Diff alone tells change amount, not quality.
+Read screenshots. Diff alone tells change amount, not quality. Screenshot JSON
+also identifies `activeWindow` and provides a bounded `visibleTextSample` for
+orientation; it is not a replacement for reading the image.
 
 ## Video evidence
 
-For real app flows, prefer a fixed video canvas and native step titles:
-
-```sh
-java -jar @fxdriver.skill.jar@ rpc <port> videoStart '{"path":"/abs/run/flow.gif","canvas":"fixed","width":1280,"height":900,"titleMode":"band","title":"Login"}'
-java -jar @fxdriver.skill.jar@ rpc <port> videoStep '{"title":"Create project"}'
-# act/wait/assert
-java -jar @fxdriver.skill.jar@ rpc <port> videoStep '{"title":"Search results"}'
-java -jar @fxdriver.skill.jar@ rpc <port> videoStop '{}'
-```
-
-Use `canvas:"fixed"` whenever the flow may switch between login, splash, main,
-or modal windows. Use absolute paths so artifacts land where the caller expects.
-Check `videoStop` for `canvasWidth`, `canvasHeight`, `steps`, and
-`scaledFrames`; do not assume a GIF is readable merely because it exists.
+Video RPCs are not available in this phase. Check `capabilities`; use repeated
+screenshots when still-image evidence is sufficient. Modal-safe asynchronous
+action dispatch is also outside this phase.
 
 ## Failure artifacts
 

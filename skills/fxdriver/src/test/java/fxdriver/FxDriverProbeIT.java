@@ -5,10 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -38,9 +34,13 @@ final class FxDriverProbeIT {
                     "mark",
                     "highlight",
                     "snapshot",
+                    "snapshotSummary",
                     "query",
                     "press",
+                    "key",
                     "fire",
+                    "fireMenuItem",
+                    "tableCell",
                     "click",
                     "type",
                     "clear",
@@ -71,9 +71,15 @@ final class FxDriverProbeIT {
                     "query",
                     "returnState",
                     "actions",
+                    "keyboard",
+                    "menus",
+                    "table-cell",
                     "value-controls",
                     "tree-table-actions",
+                    "snapshot-summary",
+                    "near-matches",
                     "screenshot",
+                    "screenshot-metadata",
                     "image-summary",
                     "image-diff",
                     "events",
@@ -304,6 +310,43 @@ final class FxDriverProbeIT {
             assertTrue(clickState.contains("\"target\":"), clickState);
             assertTrue(clickState.contains("\"windows\""));
 
+            final var windowSnapshot =
+                    rpc(endpoint.port(), endpoint.token(), "snapshotSummary", "{}");
+            final var secondaryWindow = windowId(windowSnapshot, "fxdriver probe secondary");
+            final var focusedNode =
+                    windowSnapshot.substring(windowSnapshot.indexOf("\"focusedNode\":"));
+            assertTrue(
+                    focusedNode.contains("\"window\":\"" + focusedWindow(windowSnapshot) + "\""),
+                    focusedNode);
+            final var secondaryShot =
+                    rpc(
+                            endpoint.port(),
+                            endpoint.token(),
+                            "screenshot",
+                            "{\"window\":\""
+                                    + secondaryWindow
+                                    + "\",\"path\":\"target/failsafe-probe/secondary.png\"}");
+            assertTrue(secondaryShot.contains("\"activeWindow\":"), secondaryShot);
+            assertTrue(secondaryShot.contains("fxdriver probe secondary"), secondaryShot);
+            assertTrue(secondaryShot.contains("Secondary button"), secondaryShot);
+            assertTrue(
+                    secondaryShot.contains("\"image\":{\"x\":0,\"y\":0,\"w\":260,\"h\":120}"),
+                    secondaryShot);
+            assertFalse(secondaryShot.contains("\"w\":620,\"h\":900"), secondaryShot);
+            assertTrue(secondaryShot.length() < 12_000, secondaryShot);
+
+            final var fullSnapshot = rpc(endpoint.port(), endpoint.token(), "snapshot", "{}");
+            final var popupWindow = nodeWindow(fullSnapshot, "probe-popup-button");
+            final var popupShot =
+                    rpc(
+                            endpoint.port(),
+                            endpoint.token(),
+                            "screenshot",
+                            "{\"window\":\""
+                                    + popupWindow
+                                    + "\",\"path\":\"target/failsafe-probe/popup.png\"}");
+            assertTrue(popupShot.contains("unknown screenshot window"), popupShot);
+
             assertActionTarget(
                     endpoint,
                     "type",
@@ -518,6 +561,33 @@ final class FxDriverProbeIT {
     }
 
     @Test
+    void snapshotCliSupportsFullAndSummaryModes() throws Exception {
+        try (var session =
+                FxDriverTestHarness.launch(FxDriverDataApp.class, "failsafe-snapshot-cli")) {
+            FxDriverTestHarness.awaitVisible(session.endpoint(), "project-table");
+            final var full =
+                    runCli(
+                            "snapshot",
+                            Integer.toString(session.endpoint().port()),
+                            session.endpoint().token());
+            assertEquals(0, full.exitCode(), full.output());
+            assertTrue(full.output().contains("\"windows\":"), full.output());
+
+            final var summary =
+                    runCli(
+                            "snapshot",
+                            Integer.toString(session.endpoint().port()),
+                            "--summary",
+                            session.endpoint().token());
+            assertEquals(0, summary.exitCode(), summary.output());
+            assertTrue(summary.output().contains("\"visibleTextSample\":"), summary.output());
+
+            final var malformed = runCli("snapshot", "not-a-port");
+            assertEquals(2, malformed.exitCode(), malformed.output());
+        }
+    }
+
+    @Test
     void machineLaunchDrainsChildOutput() throws Exception {
         final var out = Path.of("target", "failsafe-output-probe");
         Files.createDirectories(out);
@@ -544,6 +614,18 @@ final class FxDriverProbeIT {
         assertTrue(stderr.contains("FXDRIVER_STDERR_DONE"), stderr);
     }
 
+    private static CliResult runCli(final String... args) throws Exception {
+        final var command = new ArrayList<String>();
+        command.add(java());
+        command.add("-jar");
+        command.add(Path.of("target", "fxdriver.jar").toString());
+        command.addAll(List.of(args));
+        final var process = new ProcessBuilder(command).redirectErrorStream(true).start();
+        final var output = new String(process.getInputStream().readAllBytes());
+        assertTrue(process.waitFor(10, TimeUnit.SECONDS));
+        return new CliResult(process.exitValue(), output);
+    }
+
     private static Process startProbe(final Path out) throws IOException {
         final var command = new ArrayList<String>();
         command.add(java());
@@ -567,48 +649,22 @@ final class FxDriverProbeIT {
     }
 
     private static java.util.List<String> probeCommand() {
-        final var command = new ArrayList<String>();
-        command.add(java());
-        addProbeJvmArgs(command);
-        command.add("--enable-native-access=javafx.graphics");
-        if (Runtime.version().feature() >= 24) {
-            command.add("--sun-misc-unsafe-memory-access=allow");
-        }
-        command.add("--module-path");
-        command.add(javafxModulePath());
-        command.add("--add-modules");
-        command.add(javafxModules());
-        command.add("-cp");
-        command.add(testClasspath());
-        command.add("fxdriver.FxDriverProbeApp");
-        return command;
+        return FxDriverTestHarness.applicationCommand(FxDriverProbeApp.class);
     }
 
     private static Endpoint waitForEndpoint(final Path output) throws Exception {
-        final var deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
-        while (System.nanoTime() < deadline) {
-            final var endpoint = maybeEndpoint(output);
-            if (endpoint.isPresent()) {
-                return endpoint.get();
-            }
-            Thread.sleep(100);
-        }
-        throw new AssertionError(
-                "fxdriver endpoint not printed; output=" + Files.readString(output));
+        final var endpoint = FxDriverTestHarness.awaitEndpoint(output);
+        return new Endpoint(endpoint.port(), endpoint.token());
     }
 
     private static void assertAdvertisedCapabilities(final String capabilities) {
         assertEquals(ADVERTISED_METHODS, Json.stringArray(capabilities, "methods"));
         assertEquals(ADVERTISED_FEATURES, Json.stringArray(capabilities, "features"));
-        for (final var laterMethod :
-                List.of(
-                        "snapshotSummary",
-                        "key",
-                        "fireMenuItem",
-                        "tableCell",
-                        "videoStart",
-                        "videoStep",
-                        "videoStop")) {
+        assertFalse(Json.stringArray(capabilities, "methods").contains("select"), capabilities);
+        assertFalse(
+                Json.stringArray(capabilities, "features").contains("selector-path-selectors"),
+                capabilities);
+        for (final var laterMethod : List.of("videoStart", "videoStep", "videoStop")) {
             assertFalse(capabilities.contains("\"" + laterMethod + "\""), capabilities);
         }
     }
@@ -630,6 +686,36 @@ final class FxDriverProbeIT {
             at += needle.length();
         }
         return count;
+    }
+
+    private static String focusedWindow(final String json) {
+        final var matcher =
+                Pattern.compile("\\\"wid\\\":\\\"(w\\d+)\\\"[^}]*\\\"focused\\\":true")
+                        .matcher(json);
+        assertTrue(matcher.find(), json);
+        return matcher.group(1);
+    }
+
+    private static String nodeWindow(final String json, final String nodeId) {
+        final var matcher =
+                Pattern.compile(
+                                "\\\"window\\\":\\\"(w\\d+)\\\"[^}]*\\\"id\\\":\\\""
+                                        + Pattern.quote(nodeId)
+                                        + "\\\"")
+                        .matcher(json);
+        assertTrue(matcher.find(), json);
+        return matcher.group(1);
+    }
+
+    private static String windowId(final String json, final String title) {
+        final var matcher =
+                Pattern.compile(
+                                "\\\"wid\\\":\\\"([^\\\"]+)\\\",\\\"title\\\":\\\"[^\\\"]*"
+                                        + Pattern.quote(title)
+                                        + "\\\"")
+                        .matcher(json);
+        assertTrue(matcher.find(), json);
+        return matcher.group(1);
     }
 
     private static String firstEid(final String json) {
@@ -666,17 +752,10 @@ final class FxDriverProbeIT {
 
     private static String rawRpc(final int port, final String token, final String body)
             throws Exception {
-        final var request =
-                HttpRequest.newBuilder()
-                        .uri(URI.create("http://127.0.0.1:" + port + "/rpc"))
-                        .timeout(Duration.ofSeconds(10))
-                        .header("content-type", "application/json")
-                        .header("fxdriver-token", token)
-                        .POST(HttpRequest.BodyPublishers.ofString(body))
-                        .build();
         final var response =
-                HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
-        assertEquals(200, response.statusCode());
+                FxDriverTestHarness.rawJson(
+                        new FxDriverTestHarness.Endpoint(port, token), token, body);
+        assertEquals(200, response.status());
         return response.body();
     }
 
@@ -692,16 +771,7 @@ final class FxDriverProbeIT {
     }
 
     private static void destroy(final Process process) throws InterruptedException {
-        process.descendants().forEach(child -> child.destroyForcibly());
-        process.destroy();
-        process.waitFor(5, TimeUnit.SECONDS);
-        if (process.isAlive()) {
-            process.descendants().forEach(child -> child.destroyForcibly());
-            process.destroyForcibly();
-            process.waitFor(10, TimeUnit.SECONDS);
-        }
-        process.descendants().forEach(child -> child.destroyForcibly());
-        assertFalse(process.isAlive());
+        FxDriverTestHarness.destroy(process);
     }
 
     private static Optional<Endpoint> maybeEndpoint(final Path output) throws IOException {
@@ -723,14 +793,7 @@ final class FxDriverProbeIT {
     }
 
     private static void assertPureEndpointOutput(final Path output) throws IOException {
-        final var lines = Files.readAllLines(output);
-        assertEquals(1, lines.size(), Files.readString(output));
-        final var line = lines.getFirst();
-        assertTrue(Json.hasKey(line, "pid"), line);
-        assertTrue(Json.hasKey(line, "port"), line);
-        assertTrue(Json.hasKey(line, "token"), line);
-        assertTrue(Json.hasKey(line, "endpoint"), line);
-        assertTrue(Json.hasKey(line, "endpointFile"), line);
+        FxDriverTestHarness.assertPureEndpointOutput(output);
     }
 
     private static String testClasspath() {
@@ -761,8 +824,7 @@ final class FxDriverProbeIT {
     }
 
     private static String java() {
-        return Path.of(System.getProperty("java.home"), "bin", isWindows() ? "java.exe" : "java")
-                .toString();
+        return FxDriverTestHarness.java();
     }
 
     private static void addProbeJvmArgs(final List<String> command) {
@@ -787,4 +849,6 @@ final class FxDriverProbeIT {
     }
 
     private record Endpoint(int port, String token) {}
+
+    private record CliResult(int exitCode, String output) {}
 }
