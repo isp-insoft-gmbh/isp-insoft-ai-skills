@@ -32,6 +32,8 @@ harness install location:
 node scripts/isp-start-day.mjs
 ```
 
+Use `node scripts/isp-start-day.mjs --date YYYY-MM-DD` for a deterministic read-only report. This changes only the report date; it never edits remote data.
+
 If the harness runs commands from elsewhere, resolve `scripts/isp-start-day.mjs`
 relative to this SKILL.md's directory; do not hardcode `~/.pi/...` or any other
 install path.
@@ -82,7 +84,8 @@ Check every morning:
 
 - Today has an entry.
 - Future workdays in current month have planning entries where known.
-- If future/planned days are missing, propose values and ask before editing.
+- Check every remaining workday through the end of the current month; never stop at a rolling window.
+- If future/planned days are missing, propose each value from the previous same weekday, then ask the user to confirm or correct every proposal before editing.
 - Always read the legend table at the top of the Bürobelegung page before judging codes/colors.
 - Do not hardcode color meanings; validate current/future entries against the live legend.
 
@@ -98,13 +101,14 @@ Output rules:
 - Future weekdays blank → list day numbers only, ask for planning values.
 - Current/future entries with colors not found in the live legend → warn softly; do not edit automatically.
 
-If user asks to fill missing planned future days:
+If future planned days are missing:
 
-1. Ask for exact values (`B`, `BP`, `H`, `A`, `AP`) per day.
-2. Fetch latest page body/version.
-3. Prepare diff/summary.
-4. Ask confirmation.
-5. Only then edit Confluence.
+1. Propose each value from the previous same weekday; use `?` when no valid prior value exists.
+2. Ask the user to confirm or correct exact values (`B`, `BP`, `H`, `A`, `AP`) per day.
+3. If the user asks to apply them, fetch the latest page body/version.
+4. Prepare a diff/summary.
+5. Ask confirmation.
+6. Only then edit Confluence.
 
 ## Jira checks
 
@@ -121,6 +125,8 @@ Open assigned work:
 ```text
 acli jira workitem search --jql "assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC" --fields "key,summary,status,priority" --limit 100 --json
 ```
+
+`Ready to Sync` means waiting for code review. Match its PR by an `RD-####` key in the PR branch or title. Only surface it as actionable when no open PR exists, review changes are requested, or an unapproved PR has had no activity for more than one workday. Show approved PRs as non-actionable review state. Weekends do not consume the threshold.
 
 Flag:
 
@@ -193,10 +199,11 @@ Bürobelegung
 
 Jira sprint
 • RD-1950 To Do — ...
-• RD-2038 Ready to Sync — PR #117 OK
+Review queue: cross-checked with open PRs below.
 
 PRs
 ! #112 RD-2121 changes requested while Jira Ready to Sync
+• RD-2038 — PR #117 waiting for review; active today
 
 KKG worktrees
 ! dke dirty=25 no RD ticket

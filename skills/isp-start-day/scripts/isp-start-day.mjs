@@ -2,6 +2,7 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 
 const execFileP = promisify(execFile);
@@ -9,6 +10,32 @@ const execFileP = promisify(execFile);
 // Set ISP_KKG_ROOT to your kkg root (the dir holding `.bare` and `trunk`).
 const KKG_ROOT = process.env.ISP_KKG_ROOT || null;
 const OFFICE_PAGE_ID = process.env.ISP_OFFICE_PAGE_ID || '166494212';
+
+export function parseDateArg(args) {
+  const index = args.indexOf('--date');
+  if (index < 0) return new Date();
+
+  const value = args[index + 1] || '';
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) throw new Error(`Invalid date: ${value}`);
+
+  const [, year, month, day] = match.map(Number);
+  const date = new Date(year, month - 1, day, 12);
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  )
+    throw new Error(`Invalid date: ${value}`);
+  return date;
+}
+
+function formatDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 function line(s = '') {
   console.log(s);
@@ -175,8 +202,7 @@ function validateOfficeCell(cell, legend, label) {
   return '';
 }
 
-function parseOffice(body, accountId) {
-  const today = new Date();
+export function parseOffice(body, accountId, today) {
   const months = [
     'Januar',
     'Februar',
@@ -216,21 +242,38 @@ function parseOffice(body, accountId) {
   if (todayWarning) legendWarnings.push(todayWarning);
   const future = [];
   const missing = [];
-  for (let n = 1; n < 15; n++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() + n);
-    if (d.getMonth() !== today.getMonth()) continue;
-    const dow = d.getDay();
+  const lastDay = new Date(
+    today.getFullYear(),
+    today.getMonth() + 1,
+    0,
+  ).getDate();
+  for (let dayNumber = day + 1; dayNumber <= lastDay; dayNumber++) {
+    const date = new Date(today.getFullYear(), today.getMonth(), dayNumber, 12);
+    const dow = date.getDay();
     if (dow === 0 || dow === 6) continue;
-    const v = dayVal(d.getDate());
-    future.push(`${d.getDate()}:${v.text || '_'}/${v.color || 'no-color'}`);
-    if (!v.text) missing.push(String(d.getDate()));
-    const warning = validateOfficeCell(v, legend, `future ${d.getDate()}`);
+    const value = dayVal(dayNumber);
+    future.push(
+      `${dayNumber}:${value.text || '_'}/${value.color || 'no-color'}`,
+    );
+    if (!value.text) missing.push(dayNumber);
+    const warning = validateOfficeCell(value, legend, `future ${dayNumber}`);
     if (warning) legendWarnings.push(warning);
   }
   out.push(`Next workdays: ${future.join(', ')}`);
-  if (missing.length)
+  if (missing.length) {
     out.push(`! Future workdays missing planning: ${missing.join(', ')}`);
+    const proposals = missing.map((dayNumber) => {
+      const sourceDay = dayNumber - 7;
+      const source = dayVal(sourceDay).text.trim().toUpperCase();
+      return source && legend.validColorsByValue.has(source)
+        ? `${dayNumber}=${source} (from ${sourceDay})`
+        : `${dayNumber}=?`;
+    });
+    out.push(`Proposed update: ${proposals.join(', ')}`);
+    out.push(
+      'Confirm or correct each value (B/BP/H/A/AP); Confluence unchanged.',
+    );
+  }
   out.push(legend.summary);
   if (legendWarnings.length) out.push(...legendWarnings);
   else out.push('Legend check: ✓ current/future entries match page legend');
@@ -241,10 +284,57 @@ function rdKeysFrom(text) {
   return [...new Set(text.match(/RD-[0-9]+/g) || [])];
 }
 
-async function main() {
+function previousWorkdayStart(today) {
+  const date = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  do date.setDate(date.getDate() - 1);
+  while (date.getDay() === 0 || date.getDay() === 6);
+  return date;
+}
+
+export function jiraReviewFindings(tickets, prs, today) {
+  const result = { action: [], waiting: [] };
+  const cutoff = previousWorkdayStart(today);
+  for (const ticket of tickets) {
+    if (ticket.fields.status.name !== 'Ready to Sync') continue;
+    const pullRequest = prs.find((candidate) =>
+      rdKeysFrom(`${candidate.headRefName} ${candidate.title}`).includes(
+        ticket.key,
+      ),
+    );
+    if (!pullRequest) {
+      result.action.push(`! ${ticket.key} — Ready to Sync but no open PR`);
+      continue;
+    }
+    if (pullRequest.reviewDecision === 'CHANGES_REQUESTED') {
+      result.action.push(
+        `! ${ticket.key} — PR #${pullRequest.number} changes requested`,
+      );
+      continue;
+    }
+    if (pullRequest.reviewDecision === 'APPROVED') {
+      result.waiting.push(
+        `• ${ticket.key} — PR #${pullRequest.number} approved`,
+      );
+      continue;
+    }
+    const updated = new Date(pullRequest.updatedAt);
+    if (updated < cutoff) {
+      result.action.push(
+        `! ${ticket.key} — PR #${pullRequest.number} stale since ${updated.toISOString().slice(0, 10)}`,
+      );
+      continue;
+    }
+    result.waiting.push(
+      `• ${ticket.key} — PR #${pullRequest.number} waiting for review; active ${updated.toISOString().slice(0, 10)}`,
+    );
+  }
+  return result;
+}
+
+async function main(today) {
   line('# isp-start-day eval');
   line('');
-  line(`Date: ${new Date().toISOString().slice(0, 10)}`);
+  line(`Date: ${formatDate(today)}`);
   line('');
 
   const tools = {};
@@ -280,6 +370,7 @@ async function main() {
   line('');
 
   const seenKeys = new Set();
+  let sprintTickets = [];
 
   line('## Bürobelegung');
   if (tools.acli) {
@@ -314,7 +405,7 @@ async function main() {
       }
       const data = jsonParse(page.stdout);
       const body = data?.body?.storage?.value || '';
-      if (accountId && body) parseOffice(body, accountId).forEach(line);
+      if (accountId && body) parseOffice(body, accountId, today).forEach(line);
       else
         warn(
           'Cannot parse your Bürobelegung row; set ISP_JIRA_ACCOUNT_ID if assignee lookup fails',
@@ -344,24 +435,27 @@ async function main() {
     ]);
     const data = sprint.ok ? jsonParse(sprint.stdout) : null;
     if (Array.isArray(data)) {
-      line(`tickets: ${data.length}`);
-      const counts = new Map();
-      for (const item of data)
-        counts.set(
-          item.fields.status.name,
-          (counts.get(item.fields.status.name) || 0) + 1,
-        );
-      line('status counts:');
-      [...counts.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .forEach(([k, v]) => {
-          line(`  ${v} ${k}`);
-        });
-      line('items:');
-      data.forEach((i) => {
-        seenKeys.add(i.key);
-        line(`  ${i.key} [${i.fields.status.name}] ${i.fields.summary}`);
+      sprintTickets = data;
+      data.forEach((item) => {
+        seenKeys.add(item.key);
       });
+      for (const [heading, status] of [
+        ['In progress', 'In Progress'],
+        ['To do', 'To Do'],
+      ]) {
+        const tickets = data.filter(
+          (item) => item.fields.status.name === status,
+        );
+        if (!tickets.length) continue;
+        line(`${heading}:`);
+        tickets.forEach((item) => {
+          line(
+            `  • ${item.key} [${item.fields.priority?.name || 'no priority'}] ${item.fields.summary}`,
+          );
+        });
+      }
+      if (data.some((item) => item.fields.status.name === 'Ready to Sync'))
+        line('Review queue: cross-checked with open PRs below.');
     } else fail('Jira sprint query failed');
   } else warn('Skipped: acli missing');
   line('');
@@ -379,37 +473,48 @@ async function main() {
         '--limit',
         '100',
         '--json',
-        'number,title,headRefName,author,reviewDecision,url',
+        'number,title,headRefName,author,reviewDecision,updatedAt,url',
       ],
       { cwd: path.join(KKG_ROOT, 'trunk') },
     );
     prs = pr.ok ? jsonParse(pr.stdout) || [] : [];
-    if (prs.length) {
-      const me = (
-        await run('gh', ['api', 'user', '-q', '.login'])
-      ).stdout.trim();
-      line('my PRs:');
-      prs
-        .filter((p) => p.author.login === me)
-        .forEach((p) => {
-          line(
-            `  #${p.number} ${p.headRefName} ${p.reviewDecision || ''} ${p.title}`,
-          );
-        });
-      line('team PRs:');
-      prs
-        .filter((p) => p.author.login !== me)
-        .forEach((p) => {
-          line(
-            `  #${p.number} ${p.headRefName} ${p.reviewDecision || ''} ${p.title}`,
-          );
-        });
+    if (pr.ok) {
+      if (prs.length) {
+        const me = (
+          await run('gh', ['api', 'user', '-q', '.login'])
+        ).stdout.trim();
+        line('my PRs:');
+        prs
+          .filter((p) => p.author.login === me)
+          .forEach((p) => {
+            line(
+              `  #${p.number} ${p.headRefName} ${p.reviewDecision || ''} ${p.title}`,
+            );
+          });
+        line('team PRs:');
+        prs
+          .filter((p) => p.author.login !== me)
+          .forEach((p) => {
+            line(
+              `  #${p.number} ${p.headRefName} ${p.reviewDecision || ''} ${p.title}`,
+            );
+          });
+      } else line('No open PRs.');
       prs
         .flatMap((p) => rdKeysFrom(`${p.headRefName} ${p.title}`))
         .forEach((k) => {
           seenKeys.add(k);
         });
-    } else fail('gh pr list failed or no open PRs');
+      const findings = jiraReviewFindings(sprintTickets, prs, today);
+      if (findings.action.length) {
+        line('Action:');
+        findings.action.forEach(line);
+      }
+      if (findings.waiting.length) {
+        line('Review state:');
+        findings.waiting.forEach(line);
+      }
+    } else fail('gh pr list failed');
   } else
     warn(
       KKG_ROOT
@@ -431,9 +536,7 @@ async function main() {
     for (const l of wt.stdout.split(/\r?\n/)) {
       if (l.startsWith('worktree ')) cur = { worktree: l.slice(9) };
       if (l.startsWith('branch ') && cur) {
-        cur.branch = l
-          .replace(/^branch refs\/heads\//, '')
-          .slice('branch '.length);
+        cur.branch = l.replace(/^branch refs\/heads\//, '');
         entries.push(cur);
         cur = null;
       }
@@ -513,7 +616,11 @@ async function main() {
   } else warn('Skipped: no RD keys or acli missing');
 }
 
-main().catch((err) => {
-  fail(err?.message || String(err));
-  process.exitCode = 1;
-});
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
+)
+  main(parseDateArg(process.argv.slice(2))).catch((err) => {
+    fail(err?.message || String(err));
+    process.exitCode = 1;
+  });
