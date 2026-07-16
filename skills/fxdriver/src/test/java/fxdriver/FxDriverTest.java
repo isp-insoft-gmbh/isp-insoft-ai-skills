@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.image.BufferedImage;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import javax.imageio.ImageIO;
 import org.junit.jupiter.api.Test;
@@ -34,6 +35,13 @@ final class FxDriverTest {
 
         assertEquals("7", Json.id(json));
         assertTrue(Json.hasKey(json, "ok"));
+        assertTrue(Json.hasTopLevelKey("{\"error\":{\"code\":-1}}", "error"));
+        assertFalse(Json.hasTopLevelKey("{\"result\":{\"error\":{\"code\":-1}}}", "error"));
+        assertTrue(Json.hasInvalidStringEscape("{\"path\":\"C:\\Users\\okr\"}"));
+        assertFalse(Json.hasInvalidStringEscape("{\"path\":\"C:\\\\Users\\\\okr\"}"));
+        assertEquals(
+                "{\"path\":\"C:\\\\Users\\\\okr\"}",
+                Json.repairInvalidStringEscapes("{\"path\":\"C:\\Users\\okr\"}"));
         assertTrue(Json.booleanValue(json, "ok", false));
         assertEquals("a\nb", Json.string(json, "name"));
         assertEquals("a\nb", Json.scalar(json, "name"));
@@ -43,6 +51,17 @@ final class FxDriverTest {
         assertEquals("\"a\",\"b\"", Json.strings(java.util.List.of("a", "b")));
         assertFalse(Json.hasKey("{\"message\":\"port\"}", "port"));
         assertEquals("ä", Json.string("{\"name\":\"\\u00e4\"}", "name"));
+    }
+
+    @Test
+    void endpointArgumentAcceptsPortOrLaunchJson() throws Exception {
+        final var endpointFile = dir.resolve("launch.json");
+        Files.writeString(endpointFile, "{\"port\":12345,\"token\":\"file-token\"}");
+
+        assertEquals(new FxDriver.Endpoint(23456, "arg-token", null),
+                FxDriver.endpointArgument("23456", "arg-token"));
+        assertEquals(new FxDriver.Endpoint(12345, "file-token", endpointFile),
+                FxDriver.endpointArgument(endpointFile.toString(), "ignored"));
     }
 
     @Test

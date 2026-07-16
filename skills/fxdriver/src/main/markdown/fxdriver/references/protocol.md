@@ -8,7 +8,7 @@ Prototype CLI:
 java -jar @fxdriver.skill.jar@ attach <pid> [port]
 java -jar @fxdriver.skill.jar@ launch [port] -- \
   java [java-options...] <main-or-jar> [args...]
-java -jar @fxdriver.skill.jar@ rpc <port> <method> '<params-json>' [token]
+java -jar @fxdriver.skill.jar@ rpc <port|launch-json> <method> '<params-json>' [token]
 java -jar @fxdriver.skill.jar@ snapshot <port> [--summary] [token]
 ```
 
@@ -16,7 +16,7 @@ Attach/launch default to port `0`, so the OS chooses a free loopback port. The
 first fxdriver-owned CLI output line is machine-readable JSON with `pid`,
 `port`, `token`, `endpoint`, and `endpointFile`. Compatibility lines still print
 the chosen port, an endpoint file, and `FXDRIVER_TOKEN`. RPC calls require that
-token via `FXDRIVER_TOKEN` or the optional final token argument.
+token via `FXDRIVER_TOKEN` or the optional final token argument. `rpc` also accepts a saved launch JSON file and reads its port/token directly.
 
 ## Attach vs launch
 
@@ -347,17 +347,19 @@ Returns `{ok,count}`. The CLI exits non-zero only on a protocol-level JSON-RPC
 error (top-level `error` member); app-level `ok:false` results exit zero and
 need inspection in scripts.
 
-### `events`, `clearEvents`
+### `events`, `eventsSince`, `clearEvents`
 
 ```sh
 java -jar @fxdriver.skill.jar@ rpc <port> events '{}'
+java -jar @fxdriver.skill.jar@ rpc <port> eventsSince '{"cursor":20}'
+java -jar @fxdriver.skill.jar@ rpc <port> eventsSince '{"since":1735689600000}'
 java -jar @fxdriver.skill.jar@ rpc <port> events '{"clear":true}'
 java -jar @fxdriver.skill.jar@ rpc <port> clearEvents '{}'
 ```
 
 Returns recent fxdriver calls with `ts`, `method`, `ok`, and `params`. If
 request params include `tag` or `scenario`, the event copies them to top-level
-fields. Use `events {"clear":true}` to read and clear in one call.
+fields. `eventsSince` accepts an event cursor or millisecond timestamp. Use `events {"clear":true}` to read and clear in one call.
 
 ### `screenshot`
 

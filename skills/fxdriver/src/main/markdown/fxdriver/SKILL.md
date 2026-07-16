@@ -26,7 +26,7 @@ Drive JavaFX UI only; native dialogs and OS/global input need another tool.
 java -jar @fxdriver.skill.jar@ launch --quiet -- java [options] app.Main > target/fxdriver-launch.json 2> target/fxdriver-launch.err &
 ```
 
-The JSON line contains `pid`, `port`, and `token`. Pass the token as the final CLI argument or `FXDRIVER_TOKEN`.
+Use that JSON file directly for RPC: `java -jar fxdriver.jar rpc target/fxdriver-launch.json capabilities '{}'`; no port/token parsing.
 
 ## Essential rules
 

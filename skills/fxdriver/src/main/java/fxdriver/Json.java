@@ -11,6 +11,91 @@ final class Json {
         return fieldColon(body, key) >= 0;
     }
 
+    static boolean hasTopLevelKey(final String body, final String key) {
+        var depth = 0;
+        for (var i = 0; i < body.length(); i++) {
+            final var c = body.charAt(i);
+            if (c == '"') {
+                final var end = stringEnd(body, i);
+                var colon = end;
+                while (colon < body.length() && Character.isWhitespace(body.charAt(colon))) {
+                    colon++;
+                }
+                if (depth == 1
+                        && colon < body.length()
+                        && body.charAt(colon) == ':'
+                        && key.equals(decodeString(body, i, end))) {
+                    return true;
+                }
+                i = end - 1;
+            } else if (c == '{' || c == '[') {
+                depth++;
+            } else if (c == '}' || c == ']') {
+                depth--;
+            }
+        }
+        return false;
+    }
+
+    static boolean hasInvalidStringEscape(final String json) {
+        var inString = false;
+        for (var i = 0; i < json.length(); i++) {
+            final var c = json.charAt(i);
+            if (!inString) {
+                inString = c == '"';
+                continue;
+            }
+            if (c == '"') {
+                inString = false;
+            } else if (c == '\\') {
+                if (++i >= json.length()) {
+                    return true;
+                }
+                final var escaped = json.charAt(i);
+                if (escaped == 'u') {
+                    if (i + 4 >= json.length()) {
+                        return true;
+                    }
+                    for (var digit = 1; digit <= 4; digit++) {
+                        if (Character.digit(json.charAt(i + digit), 16) < 0) {
+                            return true;
+                        }
+                    }
+                    i += 4;
+                } else if ("\"\\/bfnrt".indexOf(escaped) < 0) {
+                    return true;
+                }
+            } else if (c < 0x20) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static String repairInvalidStringEscapes(final String json) {
+        final var out = new StringBuilder(json.length());
+        var cursor = 0;
+        while (cursor < json.length()) {
+            final var quote = json.indexOf('"', cursor);
+            if (quote < 0) {
+                out.append(json, cursor, json.length());
+                break;
+            }
+            final var end = stringEnd(json, quote);
+            out.append(json, cursor, quote);
+            final var string = json.substring(quote, end);
+            if (hasInvalidStringEscape(string)) {
+                out.append('"')
+                        .append(string.substring(1, string.length() - 1).replace("\\", "\\\\"))
+                        .append('"');
+            } else {
+                out.append(string);
+            }
+            cursor = end;
+        }
+        return out.toString();
+    }
+
     static String id(final String body) {
         final var colon = fieldColon(body, "id");
         if (colon < 0) {

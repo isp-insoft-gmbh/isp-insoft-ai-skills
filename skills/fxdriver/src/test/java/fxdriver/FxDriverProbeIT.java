@@ -553,6 +553,13 @@ final class FxDriverProbeIT {
             assertTrue(
                     rpc(endpoint.port(), endpoint.token(), "eventsSince", "{\"cursor\":0}")
                             .contains("nextCursor"));
+            final var futureEvents =
+                    rpc(
+                            endpoint.port(),
+                            endpoint.token(),
+                            "eventsSince",
+                            "{\"since\":" + Long.MAX_VALUE + "}");
+            assertTrue(futureEvents.contains("\"events\":[]"), futureEvents);
             assertTrue(
                     rpc(endpoint.port(), endpoint.token(), "clearEvents", "{}")
                             .contains("\"ok\":true"));

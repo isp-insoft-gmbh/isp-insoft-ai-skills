@@ -186,7 +186,7 @@ public final class FxDriver {
         return name.equals("java") || name.equals("java.exe");
     }
 
-    private record Endpoint(int port, String token, Path file) {}
+    record Endpoint(int port, String token, Path file) {}
 
     private record CommandOptions(boolean machineJson, ArrayList<String> positionals) {}
 
@@ -329,17 +329,19 @@ public final class FxDriver {
 
     private static void rpc(final String... args) throws Exception {
         if (args.length < 3) {
-            System.err.println("usage: fxdriver rpc <port> <method> [params-json] [token]");
+            System.err.println(
+                    "usage: fxdriver rpc <port|launch-json> <method> [params-json] [token]");
             System.exit(2);
         }
+        final var endpoint = endpointArgument(args[1], tokenArg(args, 4));
         final var body =
                 rpcBody(
-                        Integer.parseInt(args[1]),
-                        tokenArg(args, 4),
+                        endpoint.port(),
+                        endpoint.token(),
                         args[2],
                         args.length >= 4 ? args[3] : "{}");
         System.out.println(body);
-        if (body.contains("\"error\"")) {
+        if (Json.hasTopLevelKey(body, "error")) {
             System.exit(1);
         }
     }
@@ -368,7 +370,7 @@ public final class FxDriver {
                         summary ? "snapshotSummary" : "snapshot",
                         "{}");
         System.out.println(body);
-        if (body.contains("\"error\"")) {
+        if (Json.hasTopLevelKey(body, "error")) {
             System.exit(1);
         }
     }
@@ -391,7 +393,7 @@ public final class FxDriver {
                         tokenArg(args, 3),
                         "screenshot",
                         "{\"path\":\"" + jsonEscape(path.toString()) + "\"}");
-        if (response.contains("\"error\"")) {
+        if (Json.hasTopLevelKey(response, "error")) {
             System.out.println(response);
             System.exit(1);
         }
@@ -424,6 +426,17 @@ public final class FxDriver {
         return token == null ? "" : token;
     }
 
+    static Endpoint endpointArgument(final String portOrFile, final String token)
+            throws IOException {
+        try {
+            return new Endpoint(Integer.parseInt(portOrFile), token, null);
+        } catch (final NumberFormatException exception) {
+            final var file = Path.of(portOrFile);
+            final var json = Files.readString(file);
+            return new Endpoint(jsonInt(json, "port"), jsonString(json, "token"), file);
+        }
+    }
+
     private static String rpcBody(
             final int port, final String token, final String method, final String params)
             throws Exception {
@@ -431,7 +444,7 @@ public final class FxDriver {
                 "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\""
                         + jsonEscape(method)
                         + "\",\"params\":"
-                        + params
+                        + Json.repairInvalidStringEscapes(params)
                         + "}";
         final var builder =
                 HttpRequest.newBuilder()

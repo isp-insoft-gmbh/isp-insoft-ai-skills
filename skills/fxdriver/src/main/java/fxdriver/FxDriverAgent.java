@@ -530,16 +530,23 @@ public final class FxDriverAgent {
     }
 
     private static String eventsSinceResponse(final String id, final String request) {
-        final var cursor = Math.max(0, extractInt(request, "cursor", 0));
         final List<String> copy;
         synchronized (events) {
             copy = List.copyOf(events);
         }
-        final var start = Math.min(cursor, copy.size());
+        final var since = Math.max(0, extractLong(request, "since", 0));
+        var start = Math.min(Math.max(0, extractInt(request, "cursor", 0)), copy.size());
+        if (hasKey(request, "since")) {
+            start = 0;
+            while (start < copy.size() && extractLong(copy.get(start), "ts", 0) < since) {
+                start++;
+            }
+        }
         return "{\"jsonrpc\":\"2.0\",\"id\":"
                 + id
                 + ",\"result\":{\"cursor\":"
-                + cursor
+                + start
+                + (hasKey(request, "since") ? ",\"since\":" + since : "")
                 + ",\"nextCursor\":"
                 + copy.size()
                 + ",\"events\":["
@@ -4460,7 +4467,10 @@ public final class FxDriverAgent {
 
     private static void recordEvent(
             final String method, final String request, final String response) {
-        if (method == null || method.isBlank() || "events".equals(method)) {
+        if (method == null
+                || method.isBlank()
+                || "events".equals(method)
+                || "eventsSince".equals(method)) {
             return;
         }
         final var ok = !response.contains("\"error\"") && !response.contains("\"ok\":false");
@@ -4530,7 +4540,10 @@ public final class FxDriverAgent {
             } else if (c == close) {
                 depth--;
                 if (depth == 0) {
-                    return body.substring(start, i + 1);
+                    final var params = body.substring(start, i + 1);
+                    return Json.hasInvalidStringEscape(params)
+                            ? "{\"raw\":\"" + jsonEscape(params) + "\"}"
+                            : params;
                 }
             }
         }
@@ -4594,6 +4607,14 @@ public final class FxDriverAgent {
 
     private static int extractInt(final String body, final String key, final int fallback) {
         return Json.intValue(body, key, fallback);
+    }
+
+    private static long extractLong(final String body, final String key, final long fallback) {
+        try {
+            return Long.parseLong(Json.scalar(body, key));
+        } catch (final RuntimeException exception) {
+            return fallback;
+        }
     }
 
     private static boolean hasKey(final String body, final String key) {
