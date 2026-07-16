@@ -93,12 +93,14 @@ final class FxDriverProbeIT {
                                     "-jar",
                                     Path.of("target", "fxdriver.jar").toString(),
                                     "attach",
+                                    "--json",
                                     Long.toString(app.pid()))
                             .redirectOutput(out.resolve("attach.out").toFile())
                             .redirectError(out.resolve("attach.err").toFile())
                             .start();
             assertTrue(attach.waitFor(20, TimeUnit.SECONDS));
             assertEquals(0, attach.exitValue(), Files.readString(out.resolve("attach.err")));
+            assertPureEndpointOutput(out.resolve("attach.out"));
             final var endpoint = waitForEndpoint(out.resolve("attach.out"));
             assertTrue(
                     rpc(endpoint.port(), endpoint.token(), "ping", "{}").contains("\"ok\":true"));
@@ -124,6 +126,7 @@ final class FxDriverProbeIT {
         final var process = startProbe(out);
         try {
             final var endpoint = waitForEndpoint(out.resolve("launch.out"));
+            assertPureEndpointOutput(out.resolve("launch.out"));
 
             final var unauthorized = rpc(endpoint.port(), "", "ping", "{}");
             assertTrue(unauthorized.contains("\"UNAUTHORIZED\""));
@@ -133,8 +136,10 @@ final class FxDriverProbeIT {
             assertTrue(
                     rpc(endpoint.port(), endpoint.token(), "version", "{}")
                             .contains("\"protocolVersion\":1"));
-            assertAdvertisedCapabilities(
-                    rpc(endpoint.port(), endpoint.token(), "capabilities", "{}"));
+            final var capabilities = rpc(endpoint.port(), endpoint.token(), "capabilities", "{}");
+            assertAdvertisedCapabilities(capabilities);
+            assertFalse(capabilities.contains("selectorPath"), capabilities);
+            assertFalse(capabilities.contains("path=selectorPath"), capabilities);
             assertTrue(waitForRpcContains(endpoint, "snapshot", "{}", "\"probe-button\""));
             assertTrue(
                     rpc(
@@ -159,6 +164,7 @@ final class FxDriverProbeIT {
                                 + " value\"}],\"returnState\":\"compact\"}");
             assertTrue(runState.contains("\"ok\":true"));
             assertTrue(runState.contains("\"state\""));
+            assertTrue(runState.contains("\"target\":"), runState);
             assertTrue(
                     rpc(
                                     endpoint.port(),
@@ -223,6 +229,7 @@ final class FxDriverProbeIT {
                             "setText",
                             "{\"nodeId\":\"probe-field\",\"value\":\"integration\",\"returnState\":\"compact\"}");
             assertTrue(setTextState.contains("\"ok\":true"));
+            assertTrue(setTextState.contains("\"target\":"), setTextState);
             assertTrue(setTextState.contains("\"state\""));
             assertTrue(setTextState.contains("\"probe-field\""));
             assertTrue(
@@ -257,9 +264,36 @@ final class FxDriverProbeIT {
             assertTrue(
                     rpc(endpoint.port(), endpoint.token(), "clear", "{\"nodeId\":\"probe-field\"}")
                             .contains("\"ok\":true"));
-            assertTrue(
-                    rpc(endpoint.port(), endpoint.token(), "fire", "{\"nodeId\":\"probe-button\"}")
-                            .contains("\"ok\":true"));
+            final var stableTarget =
+                    assertActionTarget(endpoint, "fire", "{\"nodeId\":\"probe-button\"}");
+            assertTrue(stableTarget.contains("button#probe-button[0]"), stableTarget);
+            assertFalse(stableTarget.contains("\"quiet\""), stableTarget);
+
+            final var quietClick =
+                    rpc(
+                            endpoint.port(),
+                            endpoint.token(),
+                            "click",
+                            "{\"nodeId\":\"probe-button\",\"untilQuietMs\":100,"
+                                    + "\"timeoutMs\":2000}");
+            assertTrue(quietClick.contains("\"quiet\":{\"ok\":true"), quietClick);
+            assertTrue(quietClick.contains("\"target\":"), quietClick);
+            assertFalse(quietClick.contains("\"polls\":0"), quietClick);
+            assertFalse(quietClick.contains("\"signature\":\"\""), quietClick);
+
+            final var started = System.nanoTime();
+            final var unstable =
+                    rpc(
+                            endpoint.port(),
+                            endpoint.token(),
+                            "click",
+                            "{\"nodeId\":\"probe-unstable\",\"untilQuietMs\":200,"
+                                    + "\"timeoutMs\":450}");
+            final var elapsedMs = Duration.ofNanos(System.nanoTime() - started).toMillis();
+            assertTrue(unstable.contains("\"QUIET_TIMEOUT\""), unstable);
+            assertTrue(unstable.contains("\"quiet\":{\"ok\":false"), unstable);
+            assertTrue(elapsedMs >= 400 && elapsedMs < 1_000, "elapsed=" + elapsedMs);
+
             final var clickState =
                     rpc(
                             endpoint.port(),
@@ -267,7 +301,63 @@ final class FxDriverProbeIT {
                             "click",
                             "{\"nodeId\":\"probe-secondary-button\",\"returnState\":true}");
             assertTrue(clickState.contains("\"ok\":true"));
+            assertTrue(clickState.contains("\"target\":"), clickState);
             assertTrue(clickState.contains("\"windows\""));
+
+            assertActionTarget(
+                    endpoint,
+                    "type",
+                    "{\"nodeId\":\"probe-field\",\"value\":\"target\",\"replace\":true}");
+            assertActionTarget(endpoint, "clear", "{\"nodeId\":\"probe-field\"}");
+            assertActionTarget(
+                    endpoint, "setText", "{\"nodeId\":\"probe-field\",\"value\":\"target\"}");
+            assertActionTarget(
+                    endpoint, "setValue", "{\"nodeId\":\"probe-choice\",\"value\":\"blue\"}");
+            assertActionTarget(endpoint, "showPopup", "{\"nodeId\":\"probe-combo\"}");
+            assertActionTarget(endpoint, "hidePopup", "{\"nodeId\":\"probe-combo\"}");
+            assertActionTarget(endpoint, "increment", "{\"nodeId\":\"probe-spinner\",\"steps\":1}");
+            assertActionTarget(endpoint, "decrement", "{\"nodeId\":\"probe-spinner\"}");
+            assertActionTarget(endpoint, "scroll", "{\"nodeId\":\"probe-list\",\"amount\":1}");
+            assertActionTarget(endpoint, "selectIndex", "{\"nodeId\":\"probe-list\",\"index\":0}");
+            assertActionTarget(
+                    endpoint, "scrollToIndex", "{\"nodeId\":\"probe-tree\",\"index\":1}");
+            assertActionTarget(endpoint, "expand", "{\"nodeId\":\"probe-titled\"}");
+            assertActionTarget(endpoint, "collapse", "{\"nodeId\":\"probe-titled\"}");
+
+            final var duplicateClick =
+                    assertActionTarget(endpoint, "click", "{\"textExact\":\"Duplicate action\"}");
+            assertTrue(duplicateClick.contains("\"matches\":9"), duplicateClick);
+            assertTrue(duplicateClick.contains("\"ambiguity\""), duplicateClick);
+            assertEquals(9, occurrences(duplicateClick, "\"selectorPath\""), duplicateClick);
+
+            final var escaped =
+                    assertActionTarget(endpoint, "click", "{\"nodeId\":\"probe-escaped\"}");
+            assertTrue(escaped.contains("\\\"quote\\\""), escaped);
+            assertTrue(escaped.contains("\\\\ slash"), escaped);
+
+            final var secondary =
+                    assertActionTarget(
+                            endpoint, "click", "{\"nodeId\":\"probe-secondary-button\"}");
+            assertTrue(secondary.contains("window[1]"), secondary);
+            final var subScene =
+                    assertActionTarget(endpoint, "fire", "{\"nodeId\":\"probe-subscene-button\"}");
+            assertTrue(subScene.contains("probe-subscene-button"), subScene);
+            assertTrue(subScene.length() < 4_096, subScene);
+
+            final var miss =
+                    rpc(endpoint.port(), endpoint.token(), "click", "{\"nodeId\":\"missing\"}");
+            assertTrue(miss.contains("\"ok\":false"), miss);
+            assertTrue(miss.contains("\"target\":null"), miss);
+            assertTrue(miss.contains("\"matches\":0"), miss);
+
+            final var delayed =
+                    rpc(
+                            endpoint.port(),
+                            endpoint.token(),
+                            "fire",
+                            "{\"nodeId\":\"probe-button\",\"highlightMs\":25}");
+            assertTrue(delayed.contains("\"target\":"), delayed);
+
             assertTrue(
                     rpc(
                                     endpoint.port(),
@@ -287,11 +377,11 @@ final class FxDriverProbeIT {
                                     endpoint.port(),
                                     endpoint.token(),
                                     "selectIndex",
-                                    "{\"nodeId\":\"probe-list\",\"index\":0}")
+                                    "{\"nodeId\":\"probe-list\",\"index\":2}")
                             .contains("\"ok\":true"));
-            assertTrue(
-                    rpc(endpoint.port(), endpoint.token(), "click", "{\"textExact\":\"charlie\"}")
-                            .contains("\"ok\":true"));
+            final var listClick =
+                    rpc(endpoint.port(), endpoint.token(), "click", "{\"textExact\":\"charlie\"}");
+            assertTrue(listClick.contains("\"ok\":true"), listClick);
             assertTrue(
                     rpc(endpoint.port(), endpoint.token(), "wait", "{\"text\":\"clicked charlie\"}")
                             .contains("\"ok\":true"));
@@ -427,12 +517,40 @@ final class FxDriverProbeIT {
         }
     }
 
-    private static Process startProbe(final Path out) throws IOException {
-        final var command = new java.util.ArrayList<String>();
+    @Test
+    void machineLaunchDrainsChildOutput() throws Exception {
+        final var out = Path.of("target", "failsafe-output-probe");
+        Files.createDirectories(out);
+        final var command = new ArrayList<String>();
         command.add(java());
         command.add("-jar");
         command.add(Path.of("target", "fxdriver.jar").toString());
         command.add("launch");
+        command.add("--quiet");
+        command.add("--");
+        command.addAll(probeCommand());
+        command.add("--output-probe");
+        final var process =
+                new ProcessBuilder(command)
+                        .redirectOutput(out.resolve("launch.out").toFile())
+                        .redirectError(out.resolve("launch.err").toFile())
+                        .start();
+
+        assertTrue(process.waitFor(20, TimeUnit.SECONDS));
+        assertEquals(0, process.exitValue(), Files.readString(out.resolve("launch.err")));
+        assertPureEndpointOutput(out.resolve("launch.out"));
+        final var stderr = Files.readString(out.resolve("launch.err"));
+        assertTrue(stderr.contains("FXDRIVER_STDOUT_DONE"), stderr);
+        assertTrue(stderr.contains("FXDRIVER_STDERR_DONE"), stderr);
+    }
+
+    private static Process startProbe(final Path out) throws IOException {
+        final var command = new ArrayList<String>();
+        command.add(java());
+        command.add("-jar");
+        command.add(Path.of("target", "fxdriver.jar").toString());
+        command.add("launch");
+        command.add("--quiet");
         command.add("--");
         command.addAll(probeCommand());
         return new ProcessBuilder(command)
@@ -459,7 +577,7 @@ final class FxDriverProbeIT {
         command.add("--module-path");
         command.add(javafxModulePath());
         command.add("--add-modules");
-        command.add("javafx.controls,javafx.web,jdk.jsobject");
+        command.add(javafxModules());
         command.add("-cp");
         command.add(testClasspath());
         command.add("fxdriver.FxDriverProbeApp");
@@ -469,13 +587,9 @@ final class FxDriverProbeIT {
     private static Endpoint waitForEndpoint(final Path output) throws Exception {
         final var deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
         while (System.nanoTime() < deadline) {
-            if (Files.isRegularFile(output)) {
-                final var text = Files.readString(output);
-                final var port = PORT.matcher(text);
-                final var token = TOKEN.matcher(text);
-                if (port.find() && token.find()) {
-                    return new Endpoint(Integer.parseInt(port.group(1)), token.group(1));
-                }
+            final var endpoint = maybeEndpoint(output);
+            if (endpoint.isPresent()) {
+                return endpoint.get();
             }
             Thread.sleep(100);
         }
@@ -484,16 +598,38 @@ final class FxDriverProbeIT {
     }
 
     private static void assertAdvertisedCapabilities(final String capabilities) {
-        for (final var method : ADVERTISED_METHODS) {
-            assertTrue(
-                    capabilities.contains("\"" + method + "\""),
-                    () -> "capabilities missing method " + method + ": " + capabilities);
+        assertEquals(ADVERTISED_METHODS, Json.stringArray(capabilities, "methods"));
+        assertEquals(ADVERTISED_FEATURES, Json.stringArray(capabilities, "features"));
+        for (final var laterMethod :
+                List.of(
+                        "snapshotSummary",
+                        "key",
+                        "fireMenuItem",
+                        "tableCell",
+                        "videoStart",
+                        "videoStep",
+                        "videoStop")) {
+            assertFalse(capabilities.contains("\"" + laterMethod + "\""), capabilities);
         }
-        for (final var feature : ADVERTISED_FEATURES) {
-            assertTrue(
-                    capabilities.contains("\"" + feature + "\""),
-                    () -> "capabilities missing feature " + feature + ": " + capabilities);
+    }
+
+    private static String assertActionTarget(
+            final Endpoint endpoint, final String method, final String params) throws Exception {
+        final var response = rpc(endpoint.port(), endpoint.token(), method, params);
+        assertTrue(response.contains("\"ok\":true"), response);
+        assertTrue(response.contains("\"target\":{\"eid\":\"n"), response);
+        assertTrue(response.contains("\"matches\":"), response);
+        return response;
+    }
+
+    private static int occurrences(final String text, final String needle) {
+        var count = 0;
+        var at = 0;
+        while ((at = text.indexOf(needle, at)) >= 0) {
+            count++;
+            at += needle.length();
         }
+        return count;
     }
 
     private static String firstEid(final String json) {
@@ -573,6 +709,11 @@ final class FxDriverProbeIT {
             return Optional.empty();
         }
         final var text = Files.readString(output);
+        if (Json.hasKey(text, "port") && Json.hasKey(text, "token")) {
+            return Optional.of(
+                    new Endpoint(
+                            Json.requiredInt(text, "port"), Json.requiredString(text, "token")));
+        }
         final var port = PORT.matcher(text);
         final var token = TOKEN.matcher(text);
         if (!port.find() || !token.find()) {
@@ -581,9 +722,26 @@ final class FxDriverProbeIT {
         return Optional.of(new Endpoint(Integer.parseInt(port.group(1)), token.group(1)));
     }
 
+    private static void assertPureEndpointOutput(final Path output) throws IOException {
+        final var lines = Files.readAllLines(output);
+        assertEquals(1, lines.size(), Files.readString(output));
+        final var line = lines.getFirst();
+        assertTrue(Json.hasKey(line, "pid"), line);
+        assertTrue(Json.hasKey(line, "port"), line);
+        assertTrue(Json.hasKey(line, "token"), line);
+        assertTrue(Json.hasKey(line, "endpoint"), line);
+        assertTrue(Json.hasKey(line, "endpointFile"), line);
+    }
+
     private static String testClasspath() {
         final var separator = System.getProperty("path.separator");
         return Path.of("target", "test-classes") + separator + Path.of("target", "classes");
+    }
+
+    private static String javafxModules() {
+        return ModuleLayer.boot().findModule("jdk.jsobject").isPresent()
+                ? "javafx.controls,javafx.web"
+                : "javafx.controls,javafx.web,jdk.jsobject";
     }
 
     private static String javafxModulePath() {

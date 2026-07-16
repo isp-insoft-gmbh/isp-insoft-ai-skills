@@ -48,6 +48,31 @@ public final class FxDriverProbeApp extends Application {
     public void start(final Stage primaryStage) {
         final var primaryButton = new Button("Probe button");
         primaryButton.setId("probe-button");
+        final var duplicateActions = new VBox(2);
+        for (var i = 0; i < 9; i++) {
+            final var duplicate = new Button("Duplicate action");
+            duplicate.setId("probe-duplicate-" + i);
+            duplicateActions.getChildren().add(duplicate);
+        }
+        final var escapedButton = new Button("Escaped \"quote\" \\ slash");
+        escapedButton.setId("probe-escaped");
+
+        final var unstableState = new Label("stable");
+        unstableState.setId("probe-unstable-state");
+        final var unstable = new Button("Start unstable state");
+        unstable.setId("probe-unstable");
+        unstable.setOnAction(
+                ignored -> {
+                    final var timeline =
+                            new javafx.animation.Timeline(
+                                    new javafx.animation.KeyFrame(
+                                            javafx.util.Duration.millis(20),
+                                            tick ->
+                                                    unstableState.setText(
+                                                            Long.toString(System.nanoTime()))));
+                    timeline.setCycleCount(100);
+                    timeline.play();
+                });
 
         final var field = new ProbeTextField("initial text");
         field.setId("probe-field");
@@ -215,6 +240,10 @@ public final class FxDriverProbeApp extends Application {
                         new VBox(
                                 8,
                                 primaryButton,
+                                duplicateActions,
+                                escapedButton,
+                                unstable,
+                                unstableState,
                                 field,
                                 toggle,
                                 checkBox,
@@ -264,9 +293,24 @@ public final class FxDriverProbeApp extends Application {
         popupButton.setId("probe-popup-button");
         popup.getContent().add(new VBox(new Label("Probe popup"), popupButton));
         popup.show(primaryStage, primaryStage.getX() + 40, primaryStage.getY() + 260);
+
+        if (getParameters().getRaw().contains("--output-probe")) {
+            final var exit = new javafx.animation.PauseTransition(javafx.util.Duration.millis(500));
+            exit.setOnFinished(ignored -> javafx.application.Platform.exit());
+            exit.play();
+        }
     }
 
     public static void main(final String... args) {
+        if (java.util.List.of(args).contains("--output-probe")) {
+            final var payload = "x".repeat(512);
+            for (var i = 0; i < 256; i++) {
+                System.out.println("stdout-" + i + "-" + payload);
+                System.err.println("stderr-" + i + "-" + payload);
+            }
+            System.out.println("FXDRIVER_STDOUT_DONE");
+            System.err.println("FXDRIVER_STDERR_DONE");
+        }
         launch(args);
     }
 

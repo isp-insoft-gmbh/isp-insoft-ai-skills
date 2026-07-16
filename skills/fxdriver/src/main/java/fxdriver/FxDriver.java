@@ -3,6 +3,7 @@ package fxdriver;
 import com.sun.tools.attach.VirtualMachine;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -39,13 +40,17 @@ public final class FxDriver {
     }
 
     private static void attach(final String... args) throws Exception {
-        if (args.length < 2) {
+        final var options = commandOptions(args, 1);
+        if (options.positionals().isEmpty()) {
             System.err.println("missing pid");
             System.exit(2);
         }
 
-        final var pid = args[1];
-        final var requestedPort = args.length >= 3 ? Integer.parseInt(args[2]) : 0;
+        final var pid = options.positionals().getFirst();
+        final var requestedPort =
+                options.positionals().size() >= 2
+                        ? Integer.parseInt(options.positionals().get(1))
+                        : 0;
         final var agent = agentJar();
         final var token = token();
         final var endpointFile = endpointFile("attach-" + pid);
@@ -61,22 +66,25 @@ public final class FxDriver {
 
         final var endpoint = waitForEndpoint(endpointFile, Duration.ofSeconds(10));
         waitForRpc(endpoint.port(), endpoint.token(), Duration.ofSeconds(10));
-        printEndpoint("attached pid=" + pid, endpoint, agent);
+        printEndpoint(
+                "attached pid=" + pid,
+                endpoint,
+                agent,
+                Long.parseLong(pid),
+                -1,
+                options.machineJson());
     }
 
     private static void launch(final String... args) throws Exception {
-        var requestedPort = 0;
-        var separator = 1;
-        if (args.length >= 2 && !"--".equals(args[1])) {
-            requestedPort = Integer.parseInt(args[1]);
-            separator = 2;
-        }
+        final var options = launchOptions(args);
+        final var requestedPort = options.port();
+        final var separator = options.separator();
         if (args.length <= separator
                 || !"--".equals(args[separator])
                 || args.length <= separator + 1) {
             System.err.println(
-                    "usage: fxdriver launch [port] -- java [java-options...] <main-or-jar>"
-                            + " [args...]");
+                    "usage: fxdriver launch [--json|--quiet] [port] -- java [java-options...]"
+                            + " <main-or-jar> [args...]");
             System.exit(2);
         }
 
@@ -107,7 +115,16 @@ public final class FxDriver {
                         + endpointFile);
 
         final var startedAt = System.nanoTime();
-        final var process = new ProcessBuilder(command).inheritIO().start();
+        final var builder = new ProcessBuilder(command);
+        final var process = options.machineJson() ? builder.start() : builder.inheritIO().start();
+        final var stdout =
+                options.machineJson()
+                        ? forwardToStderr(process.getInputStream(), "fxdriver-child-stdout")
+                        : null;
+        final var stderr =
+                options.machineJson()
+                        ? forwardToStderr(process.getErrorStream(), "fxdriver-child-stderr")
+                        : null;
         Runtime.getRuntime()
                 .addShutdownHook(new Thread(() -> destroyTree(process), "fxdriver-launch-cleanup"));
         try {
@@ -117,11 +134,19 @@ public final class FxDriver {
             printEndpoint(
                     "launched pid=" + process.pid() + " startupMs=" + startupMs + " mode=javaagent",
                     endpoint,
-                    agent);
+                    agent,
+                    process.pid(),
+                    startupMs,
+                    options.machineJson());
             final var exit = process.waitFor();
+            join(stdout);
+            join(stderr);
             System.exit(exit);
         } catch (final Throwable throwable) {
             destroyTree(process);
+            process.waitFor(5, TimeUnit.SECONDS);
+            join(stdout);
+            join(stderr);
             throw throwable;
         }
     }
@@ -156,6 +181,42 @@ public final class FxDriver {
 
     private record Endpoint(int port, String token, Path file) {}
 
+    private record CommandOptions(boolean machineJson, ArrayList<String> positionals) {}
+
+    private record LaunchOptions(boolean machineJson, int port, int separator) {}
+
+    private static CommandOptions commandOptions(final String[] args, final int start) {
+        var machineJson = false;
+        final var positionals = new ArrayList<String>();
+        for (var i = start; i < args.length; i++) {
+            if ("--json".equals(args[i]) || "--quiet".equals(args[i])) {
+                machineJson = true;
+            } else {
+                positionals.add(args[i]);
+            }
+        }
+        return new CommandOptions(machineJson, positionals);
+    }
+
+    private static LaunchOptions launchOptions(final String[] args) {
+        var machineJson = false;
+        var requestedPort = 0;
+        var separator = -1;
+        for (var i = 1; i < args.length; i++) {
+            if ("--".equals(args[i])) {
+                separator = i;
+                break;
+            }
+            if ("--json".equals(args[i]) || "--quiet".equals(args[i])) {
+                machineJson = true;
+            } else {
+                requestedPort = Integer.parseInt(args[i]);
+            }
+        }
+        return new LaunchOptions(
+                machineJson, requestedPort, separator < 0 ? args.length : separator);
+    }
+
     private static String token() {
         final var bytes = new byte[24];
         RANDOM.nextBytes(bytes);
@@ -166,6 +227,28 @@ public final class FxDriver {
         final var dir = Path.of("target", "fxdriver-endpoints").toAbsolutePath();
         Files.createDirectories(dir);
         return dir.resolve(prefix + "-" + System.nanoTime() + ".json");
+    }
+
+    private static Thread forwardToStderr(final InputStream input, final String name) {
+        final var thread =
+                new Thread(
+                        () -> {
+                            try (input) {
+                                input.transferTo(System.err);
+                            } catch (final IOException ignored) {
+                                // Child exit and endpoint state remain authoritative.
+                            }
+                        },
+                        name);
+        thread.setDaemon(true);
+        thread.start();
+        return thread;
+    }
+
+    private static void join(final Thread thread) throws InterruptedException {
+        if (thread != null) {
+            thread.join(5_000);
+        }
     }
 
     private static Endpoint waitForEndpoint(final Path file, final Duration timeout)
@@ -201,7 +284,16 @@ public final class FxDriver {
     }
 
     private static void printEndpoint(
-            final String label, final Endpoint endpoint, final Path agent) {
+            final String label,
+            final Endpoint endpoint,
+            final Path agent,
+            final long pid,
+            final long startupMs,
+            final boolean machineJson) {
+        System.out.println(endpointJson(endpoint, pid, startupMs));
+        if (machineJson) {
+            return;
+        }
         System.out.printf(
                 "fxdriver %s rpc=http://127.0.0.1:%d/rpc token=%s endpoint=%s%n",
                 label, endpoint.port(), endpoint.token(), endpoint.file());
@@ -209,6 +301,23 @@ public final class FxDriver {
         System.out.printf(
                 "try: java -jar %s rpc %d highlight '{\"selector\":\"Button\"}'%n",
                 agent.getFileName(), endpoint.port());
+    }
+
+    private static String endpointJson(
+            final Endpoint endpoint, final long pid, final long startupMs) {
+        return "{\"pid\":"
+                + pid
+                + ",\"port\":"
+                + endpoint.port()
+                + ",\"token\":\""
+                + jsonEscape(endpoint.token())
+                + "\",\"endpoint\":\"http://127.0.0.1:"
+                + endpoint.port()
+                + "/rpc\",\"endpointFile\":\""
+                + jsonEscape(endpoint.file().toString())
+                + "\",\"startupMs\":"
+                + startupMs
+                + "}";
     }
 
     private static void rpc(final String... args) throws Exception {
@@ -491,9 +600,10 @@ public final class FxDriver {
     }
 
     private static void usage() {
-        System.err.println("usage: fxdriver attach <pid> [port]");
+        System.err.println("usage: fxdriver attach [--json|--quiet] <pid> [port]");
         System.err.println(
-                "       fxdriver launch [port] -- java [java-options...] <main-or-jar> [args...]");
+                "       fxdriver launch [--json|--quiet] [port] -- java [java-options...]"
+                        + " <main-or-jar> [args...]");
         System.err.println("       fxdriver rpc <port> <method> [params-json]");
         System.err.println("       fxdriver screenshot <port> <path>");
         System.err.println("       fxdriver image-summary <path>");

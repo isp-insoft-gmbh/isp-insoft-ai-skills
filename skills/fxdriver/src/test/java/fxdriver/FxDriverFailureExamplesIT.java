@@ -75,7 +75,10 @@ final class FxDriverFailureExamplesIT {
                             .contains("\"source\":"));
             assertTrue(Files.isRegularFile(before));
             assertTrue(
-                    rpc(endpoint, "click", "{\"textExact\":\"charlie\"}").contains("\"ok\":true"));
+                    rpc(endpoint, "scrollToIndex", "{\"nodeId\":\"probe-list\",\"index\":2}")
+                            .contains("\"ok\":true"));
+            final var listClick = rpc(endpoint, "click", "{\"textExact\":\"charlie\"}");
+            assertTrue(listClick.contains("\"ok\":true"), listClick);
             assertTrue(
                     rpc(endpoint, "wait", "{\"text\":\"clicked charlie\",\"timeoutMs\":2000}")
                             .contains("\"ok\":true"));
@@ -134,7 +137,7 @@ final class FxDriverFailureExamplesIT {
         command.add("--module-path");
         command.add(javafxModulePath());
         command.add("--add-modules");
-        command.add("javafx.controls,javafx.web,jdk.jsobject");
+        command.add(javafxModules());
         command.add("-cp");
         command.add(testClasspath());
         command.add("fxdriver.FxDriverProbeApp");
@@ -224,6 +227,12 @@ final class FxDriverFailureExamplesIT {
     private static String testClasspath() {
         final var separator = System.getProperty("path.separator");
         return Path.of("target", "test-classes") + separator + Path.of("target", "classes");
+    }
+
+    private static String javafxModules() {
+        return ModuleLayer.boot().findModule("jdk.jsobject").isPresent()
+                ? "javafx.controls,javafx.web"
+                : "javafx.controls,javafx.web,jdk.jsobject";
     }
 
     private static String javafxModulePath() {

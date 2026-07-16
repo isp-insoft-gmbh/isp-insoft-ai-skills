@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.regex.Pattern;
 import javafx.application.Platform;
 import javafx.geometry.Bounds;
@@ -590,7 +591,24 @@ public final class FxDriverAgent {
     private static String clickResponse(final String id, final String request) throws Exception {
         final var query = highlightQuery(request);
         final var clicked = click(query, traceMs(request), highlightEffect(request));
-        return actionResponse(id, request, query, "clicked", clicked);
+        final var untilQuietMs = Math.max(0, extractInt(request, "untilQuietMs", 0));
+        if (untilQuietMs <= 0 || clicked.count() <= 0) {
+            return actionResponse(id, request, query, "clicked", clicked);
+        }
+        final var timeoutMs = Math.max(untilQuietMs, extractInt(request, "timeoutMs", 10_000));
+        final var quiet = waitForQuiet(untilQuietMs, timeoutMs);
+        return resultResponse(
+                id,
+                actionFields(query, "clicked", clicked)
+                        + ",\"quiet\":"
+                        + quiet.json()
+                        + okOrError(
+                                quiet.ok(),
+                                quiet.ok() ? "NO_MATCH" : "QUIET_TIMEOUT",
+                                quiet.ok()
+                                        ? "No actionable node matched query"
+                                        : "UI did not stay quiet before timeout"),
+                request);
     }
 
     private static String typeResponse(final String id, final String request) throws Exception {
@@ -649,13 +667,14 @@ public final class FxDriverAgent {
                         + "\",\"amount\":"
                         + amount
                         + ",\"scrolled\":"
-                        + scrolled
-                        + ",\"ok\":"
-                        + (scrolled > 0)
-                        + (scrolled > 0
-                                ? ""
-                                : ",\"error\":{\"code\":\"NO_MATCH\",\"message\":\"No scroll target"
-                                        + " matched query\"}"),
+                        + scrolled.count()
+                        + ",\"target\":"
+                        + scrolled.targetJson()
+                        + ",\"matches\":"
+                        + scrolled.matches()
+                        + scrolled.ambiguityJson()
+                        + okOrError(
+                                scrolled.count() > 0, "NO_MATCH", "No scroll target matched query"),
                 request);
     }
 
@@ -1504,7 +1523,7 @@ public final class FxDriverAgent {
         return 1;
     }
 
-    private static int fire(final String query, final int highlightMs, final String effect)
+    private static ActionResult fire(final String query, final int highlightMs, final String effect)
             throws Exception {
         return withFirstMatch(
                 query,
@@ -1514,14 +1533,14 @@ public final class FxDriverAgent {
                     final var target = actionable(node);
                     if (target instanceof ButtonBase button) {
                         button.fire();
-                        return true;
+                        return target;
                     }
-                    return false;
+                    return null;
                 });
     }
 
-    private static int click(final String query, final int highlightMs, final String effect)
-            throws Exception {
+    private static ActionResult click(
+            final String query, final int highlightMs, final String effect) throws Exception {
         return withFirstRawMatch(
                 query,
                 highlightMs,
@@ -1530,9 +1549,9 @@ public final class FxDriverAgent {
                     final var target = clickTarget(node);
                     if (target instanceof ButtonBase button) {
                         button.fire();
-                        return true;
+                        return target;
                     }
-                    return synthesizeClick(target);
+                    return synthesizeClick(target) ? target : null;
                 });
     }
 
@@ -1597,7 +1616,7 @@ public final class FxDriverAgent {
                 null);
     }
 
-    private static int type(
+    private static ActionResult type(
             final String query,
             final String text,
             final boolean replace,
@@ -1617,19 +1636,19 @@ public final class FxDriverAgent {
                         } else {
                             input.appendText(text);
                         }
-                        return true;
+                        return target;
                     }
-                    return false;
+                    return null;
                 });
     }
 
-    private static int setText(
+    private static ActionResult setText(
             final String query, final String text, final int highlightMs, final String effect)
             throws Exception {
         return type(query, text, true, highlightMs, effect);
     }
 
-    private static int setValue(
+    private static ActionResult setValue(
             final String query, final String value, final int highlightMs, final String effect)
             throws Exception {
         return withFirstMatch(
@@ -1640,38 +1659,38 @@ public final class FxDriverAgent {
                     final var target = actionable(node);
                     if (target instanceof Slider slider) {
                         slider.setValue(Double.parseDouble(value));
-                        return true;
+                        return target;
                     }
                     if (target instanceof ScrollBar scrollBar) {
                         scrollBar.setValue(Double.parseDouble(value));
-                        return true;
+                        return target;
                     }
                     if (target instanceof DatePicker datePicker) {
                         datePicker.setValue(LocalDate.parse(value));
-                        return true;
+                        return target;
                     }
                     if (target instanceof ColorPicker colorPicker) {
                         colorPicker.setValue(Color.web(value));
-                        return true;
+                        return target;
                     }
                     if (target instanceof ComboBox<?> comboBox) {
                         final var index = itemIndex(comboBox.getItems(), value);
                         if (index >= 0) {
                             comboBox.getSelectionModel().select(index);
-                            return true;
+                            return target;
                         }
                     }
                     if (target instanceof ChoiceBox<?> choiceBox) {
                         final var index = itemIndex(choiceBox.getItems(), value);
                         if (index >= 0) {
                             choiceBox.getSelectionModel().select(index);
-                            return true;
+                            return target;
                         }
                     }
                     try {
-                        return setObjectValue(target, value);
+                        return setObjectValue(target, value) ? target : null;
                     } catch (final ReflectiveOperationException exception) {
-                        return false;
+                        return null;
                     }
                 });
     }
@@ -1705,7 +1724,7 @@ public final class FxDriverAgent {
                 : new ReflectiveOperationException(cause == null ? exception : cause);
     }
 
-    private static int popup(
+    private static ActionResult popup(
             final String query, final boolean show, final int highlightMs, final String effect)
             throws Exception {
         return withFirstMatch(
@@ -1720,7 +1739,7 @@ public final class FxDriverAgent {
                         } else {
                             comboBoxBase.hide();
                         }
-                        return true;
+                        return target;
                     }
                     if (target instanceof ChoiceBox<?> choiceBox) {
                         if (show) {
@@ -1728,13 +1747,13 @@ public final class FxDriverAgent {
                         } else {
                             choiceBox.hide();
                         }
-                        return true;
+                        return target;
                     }
-                    return false;
+                    return null;
                 });
     }
 
-    private static int stepValue(
+    private static ActionResult stepValue(
             final String query,
             final int steps,
             final boolean increment,
@@ -1753,21 +1772,21 @@ public final class FxDriverAgent {
                         } else {
                             spinner.getValueFactory().decrement(steps);
                         }
-                        return true;
+                        return target;
                     }
                     if (target instanceof Slider slider) {
                         slider.setValue(slider.getValue() + (increment ? steps : -steps));
-                        return true;
+                        return target;
                     }
                     if (target instanceof ScrollBar scrollBar) {
                         scrollBar.setValue(scrollBar.getValue() + (increment ? steps : -steps));
-                        return true;
+                        return target;
                     }
-                    return false;
+                    return null;
                 });
     }
 
-    private static int scroll(
+    private static ActionResult scroll(
             final String query, final int amount, final int highlightMs, final String effect)
             throws Exception {
         return withFirstMatch(
@@ -1779,16 +1798,16 @@ public final class FxDriverAgent {
                     if (target instanceof ScrollPane pane) {
                         pane.setVvalue(
                                 Math.max(0.0, Math.min(1.0, pane.getVvalue() + amount / 100.0)));
-                        return true;
+                        return target;
                     }
                     final var bounds = target.localToScreen(target.getBoundsInLocal());
                     if (bounds == null) {
-                        return false;
+                        return null;
                     }
                     final var robot = new Robot();
                     robot.mouseMove(bounds.getCenterX(), bounds.getCenterY());
                     robot.mouseWheel(amount);
-                    return true;
+                    return target;
                 });
     }
 
@@ -1877,36 +1896,46 @@ public final class FxDriverAgent {
         return 0;
     }
 
-    private static int selectIndex(
+    private static ActionResult selectIndex(
             final String query, final int index, final int highlightMs, final String effect)
             throws Exception {
         if (index < 0) {
-            return 0;
+            return ActionResult.miss();
         }
         return withFirstMatch(
-                query, highlightMs, effect, node -> selectIndex(actionable(node), index));
+                query,
+                highlightMs,
+                effect,
+                node -> {
+                    final var target = actionable(node);
+                    return selectIndex(target, index) ? target : null;
+                });
     }
 
     private static boolean selectIndex(final Node node, final int index) {
         if (node instanceof ListView<?> listView && index < listView.getItems().size()) {
             listView.getSelectionModel().select(index);
             listView.scrollTo(index);
+            layoutNow(listView);
             return true;
         }
         if (node instanceof TreeView<?> treeView && index < treeView.getExpandedItemCount()) {
             treeView.getSelectionModel().select(index);
             treeView.scrollTo(index);
+            layoutNow(treeView);
             return true;
         }
         if (node instanceof TableView<?> tableView && index < tableView.getItems().size()) {
             tableView.getSelectionModel().select(index);
             tableView.scrollTo(index);
+            layoutNow(tableView);
             return true;
         }
         if (node instanceof TreeTableView<?> treeTableView
                 && index < treeTableView.getExpandedItemCount()) {
             treeTableView.getSelectionModel().select(index);
             treeTableView.scrollTo(index);
+            layoutNow(treeTableView);
             return true;
         }
         if (node instanceof TabPane tabPane && index < tabPane.getTabs().size()) {
@@ -1920,38 +1949,53 @@ public final class FxDriverAgent {
         return false;
     }
 
-    private static int scrollToIndex(
+    private static ActionResult scrollToIndex(
             final String query, final int index, final int highlightMs, final String effect)
             throws Exception {
         if (index < 0) {
-            return 0;
+            return ActionResult.miss();
         }
         return withFirstMatch(
-                query, highlightMs, effect, node -> scrollToIndex(actionable(node), index));
+                query,
+                highlightMs,
+                effect,
+                node -> {
+                    final var target = actionable(node);
+                    return scrollToIndex(target, index) ? target : null;
+                });
     }
 
     private static boolean scrollToIndex(final Node node, final int index) {
         if (node instanceof ListView<?> listView && index < listView.getItems().size()) {
             listView.scrollTo(index);
+            layoutNow(listView);
             return true;
         }
         if (node instanceof TreeView<?> treeView && index < treeView.getExpandedItemCount()) {
             treeView.scrollTo(index);
+            layoutNow(treeView);
             return true;
         }
         if (node instanceof TableView<?> tableView && index < tableView.getItems().size()) {
             tableView.scrollTo(index);
+            layoutNow(tableView);
             return true;
         }
         if (node instanceof TreeTableView<?> treeTableView
                 && index < treeTableView.getExpandedItemCount()) {
             treeTableView.scrollTo(index);
+            layoutNow(treeTableView);
             return true;
         }
         return false;
     }
 
-    private static int expand(
+    private static void layoutNow(final Control control) {
+        control.applyCss();
+        control.layout();
+    }
+
+    private static ActionResult expand(
             final String query,
             final int index,
             final boolean expanded,
@@ -1959,7 +2003,13 @@ public final class FxDriverAgent {
             final String effect)
             throws Exception {
         return withFirstMatch(
-                query, highlightMs, effect, node -> expand(actionable(node), index, expanded));
+                query,
+                highlightMs,
+                effect,
+                node -> {
+                    final var target = actionable(node);
+                    return expand(target, index, expanded) ? target : null;
+                });
     }
 
     private static boolean expand(final Node node, final int index, final boolean expanded) {
@@ -2072,31 +2122,139 @@ public final class FxDriverAgent {
         return result.get(5, TimeUnit.SECONDS);
     }
 
-    private static int withFirstMatch(
+    private record QuietResult(
+            boolean ok, int quietMs, int timeoutMs, int polls, String signature) {
+        String json() {
+            return "{\"ok\":"
+                    + ok
+                    + ",\"quietMs\":"
+                    + quietMs
+                    + ",\"timeoutMs\":"
+                    + timeoutMs
+                    + ",\"polls\":"
+                    + polls
+                    + ",\"signature\":\""
+                    + jsonEscape(signature)
+                    + "\"}";
+        }
+    }
+
+    private static QuietResult waitForQuiet(final int quietMs, final int timeoutMs)
+            throws Exception {
+        final var deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
+        final var pollNanos =
+                TimeUnit.MILLISECONDS.toNanos(Math.min(100, Math.max(25, quietMs / 4)));
+        var lastSignature = "";
+        var stableSince = System.nanoTime();
+        var polls = 0;
+        while (true) {
+            var remaining = deadline - System.nanoTime();
+            if (remaining <= 0) {
+                return new QuietResult(false, quietMs, timeoutMs, polls, lastSignature);
+            }
+            final String signature;
+            try {
+                signature = uiSignature(remaining);
+            } catch (final TimeoutException exception) {
+                return new QuietResult(false, quietMs, timeoutMs, polls, lastSignature);
+            }
+            polls++;
+            final var now = System.nanoTime();
+            if (deadline - now <= 0) {
+                return new QuietResult(false, quietMs, timeoutMs, polls, lastSignature);
+            }
+            if (!signature.equals(lastSignature)) {
+                lastSignature = signature;
+                stableSince = now;
+            } else if (TimeUnit.NANOSECONDS.toMillis(now - stableSince) >= quietMs) {
+                return new QuietResult(true, quietMs, timeoutMs, polls, signature);
+            }
+            remaining = deadline - System.nanoTime();
+            if (remaining <= 0) {
+                return new QuietResult(false, quietMs, timeoutMs, polls, lastSignature);
+            }
+            TimeUnit.NANOSECONDS.sleep(Math.min(pollNanos, remaining));
+        }
+    }
+
+    private static String uiSignature(final long timeoutNanos) throws Exception {
+        if (timeoutNanos <= 0) {
+            throw new TimeoutException("Quiet-wait deadline exhausted");
+        }
+        final var result = new CompletableFuture<String>();
+        Platform.runLater(
+                () -> {
+                    try {
+                        final var out = new StringBuilder();
+                        for (final var window : Window.getWindows()) {
+                            if (!window.isShowing() || window.getScene() == null) {
+                                continue;
+                            }
+                            out.append('w')
+                                    .append(windowHandle(window))
+                                    .append(':')
+                                    .append(Math.round(window.getWidth()))
+                                    .append('x')
+                                    .append(Math.round(window.getHeight()))
+                                    .append(':')
+                                    .append(window.isFocused());
+                            for (final var node : flatten(window.getScene().getRoot())) {
+                                if (!node.isVisible()) {
+                                    continue;
+                                }
+                                final var bounds = node.getLayoutBounds();
+                                out.append('|')
+                                        .append(handle(node))
+                                        .append(':')
+                                        .append(node.isDisabled())
+                                        .append(':')
+                                        .append(node.isFocused())
+                                        .append(':')
+                                        .append(Math.round(bounds.getMinX()))
+                                        .append(',')
+                                        .append(Math.round(bounds.getMinY()))
+                                        .append(',')
+                                        .append(Math.round(bounds.getWidth()))
+                                        .append(',')
+                                        .append(Math.round(bounds.getHeight()))
+                                        .append(':')
+                                        .append(textOf(node));
+                            }
+                        }
+                        result.complete(Integer.toHexString(out.toString().hashCode()));
+                    } catch (final Throwable throwable) {
+                        result.completeExceptionally(throwable);
+                    }
+                });
+        return result.get(timeoutNanos, TimeUnit.NANOSECONDS);
+    }
+
+    private static ActionResult withFirstMatch(
             final String query, final int highlightMs, final String effect, final NodeAction action)
             throws Exception {
         return withFirstMatch(query, highlightMs, effect, action, false);
     }
 
-    private static int withFirstRawMatch(
+    private static ActionResult withFirstRawMatch(
             final String query, final int highlightMs, final String effect, final NodeAction action)
             throws Exception {
         return withFirstMatch(query, highlightMs, effect, action, true);
     }
 
-    private static int withFirstMatch(
+    private static ActionResult withFirstMatch(
             final String query,
             final int highlightMs,
             final String effect,
             final NodeAction action,
             final boolean raw)
             throws Exception {
-        final var result = new CompletableFuture<Integer>();
+        final var result = new CompletableFuture<ActionResult>();
         Platform.runLater(
                 () -> {
                     try {
-                        for (final var node :
-                                raw ? rawMatchesFor(query, Boolean.TRUE) : matchesFor(query)) {
+                        final var matches =
+                                raw ? rawMatchesFor(query, Boolean.TRUE) : matchesFor(query);
+                        for (final var node : matches) {
                             if (highlightMs > 0) {
                                 clearHighlights();
                                 highlightNode(raw ? node : actionable(node), effect);
@@ -2106,9 +2264,9 @@ public final class FxDriverAgent {
                                 pause.setOnFinished(
                                         __ -> {
                                             try {
-                                                final var ok = action.apply(node);
+                                                final var target = action.apply(node);
                                                 clearHighlights();
-                                                result.complete(ok ? 1 : 0);
+                                                result.complete(actionResult(target, matches));
                                             } catch (final Throwable throwable) {
                                                 clearHighlights();
                                                 result.completeExceptionally(throwable);
@@ -2117,12 +2275,13 @@ public final class FxDriverAgent {
                                 pause.play();
                                 return;
                             }
-                            if (action.apply(node)) {
-                                result.complete(1);
+                            final var target = action.apply(node);
+                            if (target != null) {
+                                result.complete(actionResult(target, matches));
                                 return;
                             }
                         }
-                        result.complete(0);
+                        result.complete(actionResult(null, matches));
                     } catch (final Throwable throwable) {
                         result.completeExceptionally(throwable);
                     }
@@ -2130,9 +2289,16 @@ public final class FxDriverAgent {
         return result.get(5 + Math.max(0, highlightMs / 1000), TimeUnit.SECONDS);
     }
 
+    private static ActionResult actionResult(final Node target, final List<Node> matches) {
+        if (target == null) {
+            return new ActionResult(0, "null", matches.size(), ambiguityJson(matches));
+        }
+        return new ActionResult(1, targetJson(target), matches.size(), ambiguityJson(matches));
+    }
+
     @FunctionalInterface
     private interface NodeAction {
-        boolean apply(Node node);
+        Node apply(Node node);
     }
 
     private static String resultResponse(final String id, final String fields, final String request)
@@ -2145,28 +2311,79 @@ public final class FxDriverAgent {
                 + "}}";
     }
 
+    private record ActionResult(int count, String targetJson, int matches, String ambiguityJson) {
+        static ActionResult miss() {
+            return new ActionResult(0, "null", 0, "");
+        }
+    }
+
     private static String actionResponse(
             final String id,
             final String request,
             final String query,
             final String field,
-            final int value)
+            final ActionResult value)
             throws Exception {
         return resultResponse(
                 id,
-                "\"query\":\""
-                        + jsonEscape(query)
-                        + "\",\""
-                        + field
-                        + "\":"
-                        + value
-                        + ",\"ok\":"
-                        + (value > 0)
-                        + (value > 0
-                                ? ""
-                                : ",\"error\":{\"code\":\"NO_MATCH\",\"message\":\"No actionable"
-                                        + " node matched query\"}"),
+                actionFields(query, field, value)
+                        + okOrError(
+                                value.count() > 0, "NO_MATCH", "No actionable node matched query"),
                 request);
+    }
+
+    private static String actionFields(
+            final String query, final String field, final ActionResult value) {
+        return "\"query\":\""
+                + jsonEscape(query)
+                + "\",\""
+                + field
+                + "\":"
+                + value.count()
+                + ",\"target\":"
+                + value.targetJson()
+                + ",\"matches\":"
+                + value.matches()
+                + value.ambiguityJson();
+    }
+
+    private static String targetJson(final Node node) {
+        final var window = windowOf(node);
+        return "{\"eid\":\"n"
+                + handle(node)
+                + "\",\"window\":\""
+                + (window == null ? "" : "w" + windowHandle(window))
+                + "\",\"selectorPath\":\""
+                + jsonEscape(window == null ? "" : selectorPath(window, node))
+                + "\",\"type\":\""
+                + jsonEscape(node.getClass().getSimpleName())
+                + "\",\"id\":\""
+                + jsonEscape(node.getId() == null ? "" : node.getId())
+                + "\",\"text\":\""
+                + jsonEscape(textOf(node))
+                + "\"}";
+    }
+
+    private static String ambiguityJson(final List<Node> matches) {
+        if (matches.size() <= 1) {
+            return "";
+        }
+        return ",\"ambiguity\":["
+                + String.join(
+                        ",", matches.stream().limit(8).map(FxDriverAgent::targetJson).toList())
+                + "]";
+    }
+
+    private static String okOrError(final boolean ok, final String code, final String message) {
+        return ",\"ok\":"
+                + ok
+                + (ok
+                        ? ""
+                        : ",\"error\":{\"code\":\""
+                                + jsonEscape(code)
+                                + "\",\"message\":\""
+                                + jsonEscape(message)
+                                + "\"}");
     }
 
     private static String errorResponse(
@@ -2187,7 +2404,7 @@ public final class FxDriverAgent {
             final String request,
             final String query,
             final String field,
-            final int value,
+            final ActionResult value,
             final String text,
             final boolean replace)
             throws Exception {
@@ -2202,13 +2419,13 @@ public final class FxDriverAgent {
                         + ",\""
                         + field
                         + "\":"
-                        + value
-                        + ",\"ok\":"
-                        + (value > 0)
-                        + (value > 0
-                                ? ""
-                                : ",\"error\":{\"code\":\"NO_MATCH\",\"message\":\"No text input"
-                                        + " matched query\"}"),
+                        + value.count()
+                        + ",\"target\":"
+                        + value.targetJson()
+                        + ",\"matches\":"
+                        + value.matches()
+                        + value.ambiguityJson()
+                        + okOrError(value.count() > 0, "NO_MATCH", "No text input matched query"),
                 request);
     }
 
@@ -2541,6 +2758,84 @@ public final class FxDriverAgent {
         return node.getClass().getSimpleName()
                 + id
                 + (text.isBlank() ? "" : " text=\"" + text + "\"");
+    }
+
+    private static String selectorPath(final Window window, final Node node) {
+        final var parts = new ArrayList<String>();
+        Node current = node;
+        while (current != null && parts.size() < 32) {
+            parts.add(pathSegment(current));
+            current = current.getParent();
+        }
+        Collections.reverse(parts);
+        final var path =
+                "window[" + showingWindowIndex(window) + "] > " + String.join(" > ", parts);
+        return path.length() <= 2_048 ? path : path.substring(0, 2_047) + "…";
+    }
+
+    private static String pathSegment(final Node node) {
+        final var semantic = semanticKind(node);
+        final var out =
+                new StringBuilder(semantic.isBlank() ? node.getClass().getSimpleName() : semantic);
+        if (node.getId() != null && !node.getId().isBlank()) {
+            out.append('#').append(pathEscape(node.getId()));
+        } else {
+            final var text = textOf(node).strip();
+            if (!text.isBlank()) {
+                out.append("[text=").append(pathEscape(text)).append(']');
+            }
+        }
+        out.append('[').append(siblingIndex(node)).append(']');
+        return out.toString();
+    }
+
+    private static String pathEscape(final String value) {
+        return value.replace("\\", "\\\\").replace("]", "\\]").replace(">", "\\>");
+    }
+
+    private static int siblingIndex(final Node node) {
+        final var parent = node.getParent();
+        if (parent == null) {
+            return 0;
+        }
+        var index = 0;
+        for (final var child : parent.getChildrenUnmodifiable()) {
+            if (child == node) {
+                return index;
+            }
+            if (child.getClass().equals(node.getClass())) {
+                index++;
+            }
+        }
+        return index;
+    }
+
+    private static int showingWindowIndex(final Window target) {
+        var index = 0;
+        for (final var window : Window.getWindows()) {
+            if (!window.isShowing() || window.getScene() == null) {
+                continue;
+            }
+            if (window == target) {
+                return index;
+            }
+            index++;
+        }
+        return -1;
+    }
+
+    private static Window windowOf(final Node node) {
+        if (node.getScene() != null && node.getScene().getWindow() != null) {
+            return node.getScene().getWindow();
+        }
+        for (final var window : Window.getWindows()) {
+            if (window.isShowing()
+                    && window.getScene() != null
+                    && flatten(window.getScene().getRoot()).contains(node)) {
+                return window;
+            }
+        }
+        return null;
     }
 
     private static String windowJson(final Window window) {
