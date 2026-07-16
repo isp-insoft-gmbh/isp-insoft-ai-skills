@@ -9,7 +9,15 @@ tool result, gather the next artifact, then change one thing.
 Observed result:
 
 ```json
-{"result":{"query":"text=Probe buton","present":true,"count":0,"ok":false,"error":{"code":"TIMEOUT","message":"Wait predicate not satisfied"}}}
+{
+  "result": {
+    "query": "text=Probe buton",
+    "present": true,
+    "count": 0,
+    "ok": false,
+    "error": { "code": "TIMEOUT", "message": "Wait predicate not satisfied" }
+  }
+}
 ```
 
 Useful recovery:
@@ -60,7 +68,13 @@ intended state changed. For choice-like controls, prefer `setValue` or
 Observed snapshot fragment:
 
 ```json
-{"type":"Button","id":"","nodeId":"","text":"Tool action","actionable":true}
+{
+  "type": "Button",
+  "id": "",
+  "nodeId": "",
+  "text": "Tool action",
+  "actionable": true
+}
 ```
 
 Useful recovery:

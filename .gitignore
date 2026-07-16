@@ -8,3 +8,5 @@ node_modules/
 
 # mise local state
 .mise.local.toml
+
+docs/super
