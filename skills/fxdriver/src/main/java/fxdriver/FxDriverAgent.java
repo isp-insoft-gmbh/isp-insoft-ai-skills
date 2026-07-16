@@ -103,6 +103,7 @@ public final class FxDriverAgent {
     private static int nextWindowId = 1;
     private static volatile ServerSocket server;
     private static volatile String authToken = "";
+    private static volatile boolean exitOnShutdown;
     private static final String METHODS =
             "ping, version, capabilities, configure, shutdown, batch, run, events, eventsSince,"
                 + " clearEvents, mark, highlight, snapshot, snapshotSummary, query, press, key,"
@@ -130,6 +131,7 @@ public final class FxDriverAgent {
 
         final var options = options(args);
         authToken = options.containsKey("token") ? options.get("token") : "";
+        exitOnShutdown = Boolean.parseBoolean(options.getOrDefault("exitOnShutdown", "false"));
         final var port = Integer.parseInt(options.getOrDefault("port", "0"));
         server = new ServerSocket(port, 10, InetAddress.getLoopbackAddress());
         writeEndpointFile(options.get("endpointFile"));
@@ -239,6 +241,11 @@ public final class FxDriverAgent {
             if (allowed && "shutdown".equals(method)) {
                 server.close();
                 server = null;
+                if (extractBoolean(request, "exitApp", exitOnShutdown)) {
+                    final var exit = new Thread(() -> System.exit(0), "fxdriver-exit");
+                    exit.setDaemon(true);
+                    exit.start();
+                }
             }
         }
     }
@@ -361,7 +368,9 @@ public final class FxDriverAgent {
                 case "shutdown" ->
                         "{\"jsonrpc\":\"2.0\",\"id\":"
                                 + id
-                                + ",\"result\":{\"ok\":true,\"shutdown\":true}}";
+                                + ",\"result\":{\"ok\":true,\"shutdown\":true,\"exitApp\":"
+                                + extractBoolean(request, "exitApp", exitOnShutdown)
+                                + "}}";
                 case "events" -> eventsResponse(id);
                 case "eventsSince" -> eventsSinceResponse(id, request);
                 case "clearEvents" -> clearEventsResponse(id);
@@ -423,7 +432,9 @@ public final class FxDriverAgent {
     private static String capabilitiesResponse(final String id) {
         return "{\"jsonrpc\":\"2.0\",\"id\":"
                 + id
-                + ",\"result\":{\"methods\":["
+                + ",\"result\":{\"workingDirectory\":\""
+                + jsonEscape(Path.of("").toAbsolutePath().normalize().toString())
+                + "\",\"methods\":["
                 + jsonStrings(List.of(METHODS.split(", ")))
                 + "],\"selectors\":[\"@handle\",\"eid=n\",\"#node-id\",\".style-class\",\"=exact"
                 + " text\",\"text=contains\",\"regexText=...\",\"type=Button\",\"role=BUTTON\",\"accessible=label\"],\"features\":[\"attach\",\"launch\",\"batch\",\"run\",\"snapshot\",\"query\",\"returnState\",\"actions\",\"keyboard\",\"menus\",\"table-cell\",\"value-controls\",\"tree-table-actions\",\"snapshot-summary\",\"near-matches\",\"screenshot\",\"screenshot-metadata\",\"image-summary\",\"image-diff\",\"events\",\"eventsSince\",\"visual-trace\",\"webExecuteScript\"]}}";

@@ -71,7 +71,7 @@ java -jar @fxdriver.skill.jar@ rpc <port> version '{}'
 java -jar @fxdriver.skill.jar@ rpc <port> capabilities '{}'
 ```
 
-Use these before relying on optional methods or selector forms.
+Use these before relying on optional methods or selector forms. `capabilities` also returns `workingDirectory`, the base for relative screenshot paths.
 
 ### `configure`
 
@@ -445,7 +445,7 @@ Uses control-specific scroll when possible; Robot fallback otherwise.
 java -jar @fxdriver.skill.jar@ rpc <port> shutdown '{}'
 ```
 
-Stops the target JVM's fxdriver RPC server, not the app itself.
+Stops the RPC server. Apps started by `launch` exit; attached apps keep running. `exitApp:true` explicitly exits either.
 
 ## Selectors
 

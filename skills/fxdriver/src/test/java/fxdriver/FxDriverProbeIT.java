@@ -120,6 +120,7 @@ final class FxDriverProbeIT {
                             .contains("\"scale\":"));
             assertTrue(Files.isRegularFile(out.resolve("window.png")));
             rpc(endpoint.port(), endpoint.token(), "shutdown", "{}");
+            assertTrue(app.isAlive());
         } finally {
             destroy(app);
         }
@@ -561,6 +562,32 @@ final class FxDriverProbeIT {
     }
 
     @Test
+    void helpAndNoArgsExitSuccessfully() throws Exception {
+        for (final var args : List.of(new String[0], new String[] {"--help"})) {
+            final var help = runCli(args);
+            assertEquals(0, help.exitCode(), help.output());
+            assertTrue(help.output().contains("fxdriver launch"), help.output());
+        }
+    }
+
+    @Test
+    void shutdownExitsLaunchedApp() throws Exception {
+        final var session =
+                FxDriverTestHarness.launch(FxDriverDataApp.class, "failsafe-shutdown-exit");
+        try {
+            final var response =
+                    rpc(session.endpoint().port(), session.endpoint().token(), "shutdown", "{}");
+            assertTrue(response.contains("\"ok\":true"), response);
+            assertTrue(session.process().waitFor(10, TimeUnit.SECONDS));
+            assertEquals(0, session.process().exitValue());
+        } finally {
+            if (session.process().isAlive()) {
+                destroy(session.process());
+            }
+        }
+    }
+
+    @Test
     void snapshotCliSupportsFullAndSummaryModes() throws Exception {
         try (var session =
                 FxDriverTestHarness.launch(FxDriverDataApp.class, "failsafe-snapshot-cli")) {
@@ -657,8 +684,11 @@ final class FxDriverProbeIT {
         return new Endpoint(endpoint.port(), endpoint.token());
     }
 
-    private static void assertAdvertisedCapabilities(final String capabilities) {
+    private static void assertAdvertisedCapabilities(final String capabilities) throws Exception {
         assertEquals(ADVERTISED_METHODS, Json.stringArray(capabilities, "methods"));
+        assertEquals(
+                Path.of("").toAbsolutePath().normalize().toString(),
+                Json.requiredString(capabilities, "workingDirectory"));
         assertEquals(ADVERTISED_FEATURES, Json.stringArray(capabilities, "features"));
         assertFalse(Json.stringArray(capabilities, "methods").contains("select"), capabilities);
         assertFalse(

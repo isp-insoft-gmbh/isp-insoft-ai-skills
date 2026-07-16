@@ -26,7 +26,12 @@ public final class FxDriver {
 
     public static void main(final String... args) throws Exception {
         if (args.length < 1) {
-            usage();
+            usage(0);
+            return;
+        }
+        if ("--help".equals(args[0]) || "-h".equals(args[0])) {
+            usage(0);
+            return;
         }
         switch (args[0]) {
             case "attach" -> attach(args);
@@ -36,7 +41,7 @@ public final class FxDriver {
             case "screenshot" -> screenshot(args);
             case "image-summary" -> imageSummary(args);
             case "image-diff" -> imageDiff(args);
-            default -> usage();
+            default -> usage(2);
         }
     }
 
@@ -113,7 +118,8 @@ public final class FxDriver {
                         + ",token="
                         + token
                         + ",endpointFile="
-                        + endpointFile);
+                        + endpointFile
+                        + ",exitOnShutdown=true");
 
         final var startedAt = System.nanoTime();
         final var builder = new ProcessBuilder(command);
@@ -634,7 +640,7 @@ public final class FxDriver {
         return "%016x".formatted(bits);
     }
 
-    private static void usage() {
+    private static void usage(final int exitCode) {
         System.err.println("usage: fxdriver attach [--json|--quiet] <pid> [port]");
         System.err.println(
                 "       fxdriver launch [--json|--quiet] [port] -- java [java-options...]"
@@ -644,7 +650,7 @@ public final class FxDriver {
         System.err.println("       fxdriver screenshot <port> <path>");
         System.err.println("       fxdriver image-summary <path>");
         System.err.println("       fxdriver image-diff <before> <after> [diff-png]");
-        System.exit(2);
+        System.exit(exitCode);
     }
 
     static int jsonInt(final String json, final String key) throws IOException {

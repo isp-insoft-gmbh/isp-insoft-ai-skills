@@ -88,11 +88,12 @@ try {
   rpcErrors = (JSON.stringify(eventDoc).match(/\"ok\":false/g) ?? []).length;
 } catch {}
 const success = result.status === 0 && !result.error && missing.length === 0 && invalid.length === 0 && stateFailures.length === 0;
-const wallSeconds = wallMs / 1000;
-const score = Math.round((wallSeconds + toolCalls * 10 + toolErrors * 100 + rpcErrors * 25 + missing.length * 500 + invalid.length * 500 + stateFailures.length * 500) * 1000) / 1000;
+const correctnessFailures = missing.length + invalid.length + stateFailures.length;
+const cleanupFailures = result.status === 0 && !result.error ? 0 : 1;
+const score = correctnessFailures * 10_000 + cleanupFailures * 1_000 + toolErrors * 100 + rpcErrors * 100 + toolCalls;
 const summary = { runName, model, scenario: scenarioName, exitCode: result.status, signal: result.signal, timedOut: result.error?.code === "ETIMEDOUT", wallMs, toolCalls, toolErrors, rpcErrors, missing, invalid, stateFailures, success, score };
 writeFileSync(join(runDir, "metrics.json"), JSON.stringify(summary, null, 2));
-console.log(`METRIC effectiveness_score=${score}`);
+console.log(`METRIC reliability_cost=${score}`);
 console.log(`METRIC wall_ms=${wallMs}`);
 console.log(`METRIC tool_calls=${toolCalls}`);
 console.log(`METRIC tool_errors=${toolErrors}`);
@@ -121,7 +122,7 @@ function parseJsonl(text) {
   return values;
 }
 function artifactPath(dir, name) {
-  const aliases = { "before-image.json": "before-image-summary.json", "after-image.json": "after-image-summary.json" };
+  const aliases = { "initial-snapshot.json": "full-snapshot.json", "before-image.json": "before-image-summary.json", "after-image.json": "after-image-summary.json" };
   for (const root of [dir, join(dir, "artifacts")]) {
     for (const candidate of [name, aliases[name]].filter(Boolean)) {
       const path = join(root, candidate);

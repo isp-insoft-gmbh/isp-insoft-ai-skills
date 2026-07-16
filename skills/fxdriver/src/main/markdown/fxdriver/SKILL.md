@@ -16,7 +16,7 @@ Drive JavaFX UI only; native dialogs and OS/global input need another tool.
 3. Prefer `nodeId`, then `textExact`, `eid`, role, or text. `selectorPath` is diagnostic, never a selector.
 4. Act with the control-specific method: `fire`/`click`, `setText`/`type`, `setValue`, `selectIndex`, `fireMenuItem`, `tableCell`, or `key`.
 5. `wait`/`assert` the result. Capture and read screenshots for visual claims.
-6. Save `events` on failure; call `shutdown` and terminate launched apps.
+6. Save `events` on failure; call `shutdown`—launched apps exit, attached apps stay running.
 
 ## Launch lifecycle
 
@@ -32,7 +32,7 @@ The JSON line contains `pid`, `port`, and `token`. Pass the token as the final C
 
 - Input payloads use `value`; `text` selects a node.
 - `key` emits synthetic JavaFX events, not OS keystrokes.
-- Screenshot paths resolve in the app working directory; use absolute paths only when it differs from your shell.
+- `capabilities.workingDirectory` is the app cwd; screenshot paths resolve there.
 - `ok:true` means the primitive ran, not that intended state changed—verify afterward.
 - Add semantic JavaFX ids only with permission.
 - Parse JSON with `jq` or Node, not Python.
