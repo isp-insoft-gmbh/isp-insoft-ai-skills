@@ -102,10 +102,15 @@ test('list exposes coworker-facing kind, build state, harnesses, and description
     result.stdout,
     /fxdriver-instructions\s+maven\/java\s+(yes|no)\s+claude,pi,codex/,
   );
-  assert.match(result.stdout, /fxdriver\s+.*Drive JavaFX desktop apps/);
+  assert.match(
+    result.stdout,
+    /security-scan\s+markdown\s+(yes|no)\s+claude,pi,codex/,
+  );
+  assert.match(result.stdout, /fxdriver\s+.*Drive and inspect JavaFX apps/);
   assert.match(
     result.stdout,
     /fxdriver-instructions\s+.*Clarify and harden human instructions/,
   );
+  assert.match(result.stdout, /security-scan\s+.*unknown-vulnerability scans/);
   assert.match(result.stdout, /uuid-generator\s+.*Generate UUIDs\/GUIDs/);
 });
