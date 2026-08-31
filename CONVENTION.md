@@ -148,9 +148,11 @@ owns its Java formatting. Same hierarchy as build/verify.
 ## mise's role
 
 mise pins **runtimes** per skill (node, java), **owns each skill's
-build/verify/fmt/lint tasks**, and is the task entrypoint. It does **not** resolve a skill's own
-dependency graph — that stays with the skill's package manager (Maven). A
-teammate who only wants the markdown/script skills never needs a JDK.
+build/verify/fmt/lint tasks**, and is the task entrypoint. Pin every executable
+invoked by tasks or tests in the nearest applicable `[tools]`; tool upgrades must
+preserve unrelated tools. mise does **not** resolve a skill's own dependency
+graph — that stays with the skill's package manager (Maven). A teammate who only
+wants the markdown/script skills never needs a JDK.
 
 ## Adding a skill
 

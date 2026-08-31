@@ -1,6 +1,6 @@
-# security-scan - pure markdown. Build is a prune-copy into dist/.
+# security - pure markdown. Build is a prune-copy into dist/.
 [tasks.build]
-description = "Pack SKILL.md and references -> dist/security-scan"
+description = "Pack SKILL.md and references -> dist/security"
 run = "node ../../scripts/pack.mjs"
 
 [tasks.verify]

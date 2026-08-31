@@ -17,6 +17,7 @@ config_roots = ["skills/*"]
 
 [tools]
 node = "26.4.0" # runs scripts/skills.mjs and Node companion skills
+yq = "4.53.3" # parses YAML frontmatter without npm deps
 dprint = "0.55.1" # fmt: markdown (+frontmatter), json, toml
 biome = "2.5.3" # fmt + lint: js/mjs
 

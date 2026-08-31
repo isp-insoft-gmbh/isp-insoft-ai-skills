@@ -1101,7 +1101,14 @@ private static MenuItem menuText(final List<MenuItem> items, final String text, 
 Resolve `path` with `menuPath(items, path, 0)`. Otherwise call `menuText(items,itemText,true)`, then retry with `false`. If no target node/menu root/item exists, return `fired:0,ok:false` with `NO_MENU_ITEM`; if disabled, return `DISABLED`. Call `MenuItem.fire()` and return:
 
 ```json
-{"query":"#project-menu","kind":"MenuBar","path":["File","Save Workspace"],"value":"Save Workspace","fired":1,"ok":true}
+{
+  "query": "#project-menu",
+  "kind": "MenuBar",
+  "path": ["File", "Save Workspace"],
+  "value": "Save Workspace",
+  "fired": 1,
+  "ok": true
+}
 ```
 
 Do not show popups and do not add generic menu show/hide APIs.

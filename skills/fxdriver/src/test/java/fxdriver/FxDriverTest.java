@@ -58,9 +58,11 @@ final class FxDriverTest {
         final var endpointFile = dir.resolve("launch.json");
         Files.writeString(endpointFile, "{\"port\":12345,\"token\":\"file-token\"}");
 
-        assertEquals(new FxDriver.Endpoint(23456, "arg-token", null),
+        assertEquals(
+                new FxDriver.Endpoint(23456, "arg-token", null),
                 FxDriver.endpointArgument("23456", "arg-token"));
-        assertEquals(new FxDriver.Endpoint(12345, "file-token", endpointFile),
+        assertEquals(
+                new FxDriver.Endpoint(12345, "file-token", endpointFile),
                 FxDriver.endpointArgument(endpointFile.toString(), "ignored"));
     }
 
