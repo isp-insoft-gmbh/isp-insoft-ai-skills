@@ -40,7 +40,6 @@ cmd — Git Bash mangles the leading `//`.
 | skill             | kind            | installs to       |
 | ----------------- | --------------- | ----------------- |
 | `experimentation` | markdown        | claude, pi, codex |
-| `isp-start-day`   | markdown + Node | claude, pi, codex |
 | `uuid-generator`  | markdown + Node | claude, pi, codex |
 | `fxdriver`        | Maven / JavaFX  | claude, pi, codex |
 

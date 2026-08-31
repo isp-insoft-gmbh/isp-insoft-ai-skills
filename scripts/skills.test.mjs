@@ -88,10 +88,6 @@ test('list exposes coworker-facing kind, build state, harnesses, and description
   );
   assert.match(
     result.stdout,
-    /isp-start-day\s+markdown\+node\s+(yes|no)\s+claude,pi,codex/,
-  );
-  assert.match(
-    result.stdout,
     /uuid-generator\s+markdown\+node\s+(yes|no)\s+claude,pi,codex/,
   );
   assert.match(

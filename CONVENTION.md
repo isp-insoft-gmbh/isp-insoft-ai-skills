@@ -70,7 +70,6 @@ By complexity:
 | skill           | `[tasks.build]`                                                  | `[tasks.verify]`       |
 | --------------- | ---------------------------------------------------------------- | ---------------------- |
 | experimentation | `pack.mjs`                                                       | `check.mjs`            |
-| isp-start-day   | `pack.mjs`                                                       | `check.mjs`            |
 | fxdriver        | `sh.mjs ./mvnw … package` then `pack.mjs --from target/fxdriver` | `sh.mjs ./mvnw verify` |
 
 `dist/` is gitignored — always reproducible from source.
