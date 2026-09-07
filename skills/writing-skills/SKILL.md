@@ -59,8 +59,7 @@ Read-only tools are the default;
 mutation tests may touch isolated temporary fixtures only.
 These flags restrict the test setup, not an OS sandbox;
 inspect target instructions and helpers before running them.
-Do not launch a visible terminal solely for a headless skill test;
-use `terminal-harness` when interaction or terminal UI is under test.
+Use an interactive-terminal workflow only when interaction or terminal UI is under test.
 Keep scenario, acceptance criteria, command, model/settings, outputs,
 and verdict in temporary evidence.
 Report blocked checks and residual gaps explicitly;
@@ -68,6 +67,10 @@ never manufacture RED or substitute a static pass for behavioral evidence.
 
 ## Authoring rules
 
+- Split broad workflows into independently useful, single-outcome skills;
+  grouping directories need no `SKILL.md`.
+- Express composition as natural-language outcomes;
+  never name, path, or mandate loading another skill.
 - `name`: 1-64 lowercase letters/digits, single internal hyphens;
   match the directory for portability.
 - `description`: non-empty, at most 1024 characters;
@@ -87,17 +90,7 @@ never manufacture RED or substitute a static pass for behavioral evidence.
 
 ## Mechanical checks
 
-Run the bundled checker from this skill directory:
-
-```sh
-node scripts/check.mjs <skill-dir>
-```
-
-See [checker scope](references/checker.md).
-It reads only: YAML/name/description, local Markdown links,
-and package/test declarations.
-It never runs the target's scripts or claims semantic correctness
-or test coverage.
-
-Run the target's reviewed tests and repository formatter/linter separately.
-Finish with scope, actual RED/GREEN evidence, checks run, and remaining gaps.
+Run `node scripts/check.mjs <skill-dir>`;
+see [checker scope](references/checker.md).
+Run target tests and repository checks separately.
+Finish with scope, RED/GREEN evidence, checks, and gaps.
