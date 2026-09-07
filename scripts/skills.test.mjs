@@ -223,6 +223,49 @@ test('install preserves a markdown family as one nested unit', () => {
   }
 });
 
+test('markdown installs and status ignore source-only directories', () => {
+  const fixture = createCliFixture();
+  const target = path.join(fixture.root, 'target');
+  const ignored = ['.git', 'dist', 'node_modules', 'target'];
+  try {
+    for (const name of ignored) {
+      const junk = path.join(
+        fixture.root,
+        'skills',
+        'family',
+        name,
+        'junk.txt',
+      );
+      mkdirSync(path.dirname(junk), { recursive: true });
+      writeFileSync(junk, 'source-only\n');
+    }
+
+    const installed = runCli(
+      fixture.cli,
+      ['install', 'family', '--target', target],
+      {},
+      fixture.root,
+    );
+    assert.equal(installed.status, 0, installed.stderr);
+    for (const name of ignored)
+      assert.equal(existsSync(path.join(target, 'family', name)), false);
+
+    writeFileSync(
+      path.join(fixture.root, 'skills', 'family', 'dist', 'junk.txt'),
+      'changed source-only content\n',
+    );
+    const status = runCli(
+      fixture.cli,
+      ['status', '--harness', 'pi'],
+      { SKILLS_HARNESS_PI: target },
+      fixture.root,
+    );
+    assert.match(status.stdout, /^family\s+pi\s+current$/m);
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test('status and uninstall operate on the complete family', () => {
   const fixture = createCliFixture();
   const harness = path.join(fixture.root, 'harness');

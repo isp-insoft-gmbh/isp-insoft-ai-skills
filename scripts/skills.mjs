@@ -167,12 +167,10 @@ function canonicalPath(candidate) {
 }
 
 // Content digest of a directory: sha256 over every file's relpath + bytes, in a
-// stable order. null if the dir is absent. Drift is detected by comparing a
-// complete unit artifact to its installed copy. This remains correct
-// when a complex build is non-reproducible: rebuilding changes its artifact,
-// which is exactly when the installed copy is stale.
+// stable order. null if the dir is absent. Source-only directories are excluded
+// from natural Markdown artifacts; complex artifacts are already clean dist.
 // Stateless: no marker file, no version field — the bytes are the identity.
-function hashDir(dir) {
+function hashDir(dir, skippedDirectories = new Set()) {
   if (!fs.existsSync(dir)) return null;
   const files = [];
   const walk = (d, rel) => {
@@ -180,6 +178,7 @@ function hashDir(dir) {
       .readdirSync(d, { withFileTypes: true })
       .sort((a, b) => (a.name < b.name ? -1 : 1));
     for (const e of entries) {
+      if (e.isDirectory() && skippedDirectories.has(e.name)) continue;
       const r = rel ? `${rel}/${e.name}` : e.name;
       if (e.isDirectory()) walk(path.join(d, e.name), r);
       else files.push([r, fs.readFileSync(path.join(d, e.name))]);
@@ -193,6 +192,23 @@ function hashDir(dir) {
     h.update(buf);
   }
   return h.digest('hex');
+}
+
+function copyArtifact(unit, dest) {
+  const source = unit.artifactRoot;
+  if (unit.built) {
+    fs.cpSync(source, dest, { recursive: true });
+    return;
+  }
+  fs.cpSync(source, dest, {
+    recursive: true,
+    filter: (candidate) =>
+      candidate === source ||
+      !(
+        SOURCE_SKIP.has(path.basename(candidate)) &&
+        fs.lstatSync(candidate).isDirectory()
+      ),
+  });
 }
 
 // Install ledger: <destination>/.isp-skills.json maps each installed unit to its
@@ -331,7 +347,7 @@ function installOne(name, base, force = false) {
   )
     die(`${name}: install target overlaps source artifact`);
   const ledger = readLedger(base);
-  const artifactHash = hashDir(source);
+  const artifactHash = hashDir(source, unit.built ? undefined : SOURCE_SKIP);
   const destHash = hashDir(dest); // null if not installed
   const owned = name in ledger;
 
@@ -353,7 +369,7 @@ function installOne(name, base, force = false) {
   }
   fs.mkdirSync(base, { recursive: true });
   fs.rmSync(dest, { recursive: true, force: true }); // clean-then-copy: no stale files
-  fs.cpSync(source, dest, { recursive: true });
+  copyArtifact(unit, dest);
   ledger[name] = artifactHash;
   writeLedger(base, ledger);
   process.stdout.write(`  ✓ ${name} -> ${dest}\n`);
@@ -473,8 +489,9 @@ switch (cmd) {
         if (!liveSet.has(n)) {
           state = 'ORPHAN'; // we installed it; source deleted -> `uninstall --orphans`
         } else {
-          const dh = installUnit(n).ready
-            ? hashDir(installUnit(n).artifactRoot)
+          const unit = installUnit(n);
+          const dh = unit.ready
+            ? hashDir(unit.artifactRoot, unit.built ? undefined : SOURCE_SKIP)
             : null;
           const ih = hashDir(path.join(base, n));
           state =
