@@ -5,128 +5,138 @@ complexity map — from a lone `SKILL.md` to a JavaFX driver with a Maven build.
 
 ## Definitions
 
-- **skill** — a directory `skills/<name>/` with:
-  - `mise.toml` — this skill's `build`/`verify` tasks (+ its toolchain). Its
-    presence is what marks the dir as a skill; the dir name **is** the skill name.
-  - a `SKILL.md` source (or a build that produces one)
-- **artifact** — `skills/<name>/dist/<name>/`, a self-contained skill directory
-  that always contains a final `SKILL.md`. The only thing a harness consumes.
-- **harness** — an agent runtime that discovers skills in a directory
+- **skill**: a directory containing `SKILL.md` and optional support files. It
+  may live directly under `skills/` or inside a natural family such as
+  `skills/java/java-ffm/`.
+- **install unit**: a top-level `skills/<unit>/` directory. Installation,
+  ownership, status, and removal always operate on this complete directory.
+- **family**: an install unit containing multiple nested skills. Family members
+  remain independently discoverable at runtime but cannot be installed
+  separately.
+- **complex unit**: an install unit with `mise.toml`, a build-specific source
+  layout, and one or more generated `dist/<name>/` skills. `fxdriver` and
+  `writing-skills` are complex units.
+- **artifact**: the complete directory copied for an install unit. This is its
+  source directory for Markdown-only units and its built output for complex
+  units.
+- **harness**: an agent runtime that discovers skills in a directory
   (`claude`, `pi`, `codex`).
+- **target**: any caller-selected skills directory used instead of a known
+  harness path.
 
-## The one rule: source ≠ artifact
+## Natural source hierarchy
 
-This project never ships `skills/<name>/` directly. It reads
-`skills/<name>/dist/<name>/`, produced by `build`. For a markdown-only skill the
-two are identical; for a skill with a build step (fxdriver) they differ. Treating
-every skill the same way — build, then install the output — is what lets one
-convention span both.
+Markdown skills stay where their subject taxonomy belongs:
 
-So: **always build, then install the build output. Never install source.**
-
-## Each skill owns its build — mise is hierarchical
-
-mise config merges down the directory tree: from a skill dir, the root + skill
-`mise.toml` stack and `[tools]` cascade. A skill's own `[tasks.build]` shadows
-the root's when you are in its dir. So **each skill defines its own build/verify**
-in `skills/<name>/mise.toml`; the root does not configure per-skill steps.
-
-```sh
-mise run //skills/fxdriver:build # builds just fxdriver, with java active
-mise run build                   # from root: alias for //skills/...:build (every skill)
+```text
+skills/
+├── experimentation/
+│   └── SKILL.md
+├── java/
+│   ├── java-ffm/
+│   │   └── SKILL.md
+│   └── java-virtual-threads/
+│       └── SKILL.md
+└── fxdriver/                  # complex exception
+    ├── mise.toml
+    ├── src/main/...
+    └── dist/...
 ```
 
-This is a **mise monorepo** (`monorepo_root = true`, `[monorepo].config_roots =
-["skills/*"]` in the root `mise.toml`). Each skill's tasks are addressable as
-`//skills/<name>:<task>`, and mise **activates that skill's own `[tools]`** (java
-for fxdriver) when running one — that is why we route through mise, not a plain
-loop. `//skills/...:<task>` fans out to every skill that defines `<task>`. The
-recursive wildcard token is `...`, **not** `*`. The root `build`/`verify`/`fmt`/
-`lint` tasks are thin aliases over these paths — no delegator script.
+The runner recursively discovers `SKILL.md` while skipping `.git`, `dist`,
+`node_modules`, and `target`. A Markdown-only unit needs no `mise.toml` and no
+build. A standalone unit copies its skill directory directly; a family copies
+its complete hierarchy to `<destination>/<unit>/`.
 
-> Per-skill targeting is the native path (`mise run //skills/<name>:build`), not a
-> `-- <name>` flag. On Windows, type these in PowerShell/cmd — Git Bash mangles
-> the leading `//`. mise task bodies already run via `cmd`, so root aliases are
-> unaffected.
+## Complex build contract
 
-## Build contract
+A complex unit owns its toolchain and tasks in `skills/<unit>/mise.toml`.
+Its `[tasks.build]` emits `./dist/<name>/` containing a final `SKILL.md` for
+every produced skill. A standalone complex unit installs `dist/<unit>/`
+directly. A complex family installs the complete `dist/` hierarchy under
+`<destination>/<unit>/`. Root tasks fan out through mise's monorepo paths, so
+each complex unit receives its own tools.
 
-Each skill's `mise.toml` `[tasks.build]` must emit `./dist/<name>/` containing a
-final `SKILL.md`. Two shared helpers keep this cross-platform (mise runs task
-bodies via `cmd /c` on Windows):
+```sh
+mise run //skills/fxdriver:build # build one complex owner
+mise run build                   # build every complex owner
+```
 
-- `scripts/sh.mjs <cmd…>` — run a command, normalizing unix wrappers
-  (`./mvnw` → `.\mvnw.cmd` on Windows). Use for build steps like Maven.
-- `scripts/pack.mjs [--from <dir>]` — copy the deliverable into `./dist/<name>/`.
-  No `--from`: prune-copy the skill source (drops `mise.toml`, `target/`,
-  `node_modules/`, `.git/`, `dist/`). `--from target/x`: copy a built output
-  verbatim.
-- `scripts/check.mjs` — verify a `SKILL.md` has frontmatter with a `name`
-  matching the dir and a `description`. The default `verify` for skills with no
-  build step.
+On Windows, run native `//skills/...` task paths in PowerShell or cmd because
+Git Bash mangles the leading `//`.
 
-By complexity:
+Shared helpers:
 
-| skill           | `[tasks.build]`                                                  | `[tasks.verify]`       |
-| --------------- | ---------------------------------------------------------------- | ---------------------- |
-| experimentation | `pack.mjs`                                                       | `check.mjs`            |
-| fxdriver        | `sh.mjs ./mvnw … package` then `pack.mjs --from target/fxdriver` | `sh.mjs ./mvnw verify` |
+- `scripts/sh.mjs <cmd…>` runs commands and normalizes Unix wrappers on Windows.
+- `scripts/pack.mjs [--clean-root] [--from <dir>] [--name <name>]` creates a
+  complex unit's installable `dist/<name>/` output.
+- `scripts/check.mjs` validates one complex skill artifact.
+- `scripts/check-frontmatter.mjs --source` recursively validates every source
+  skill.
 
-`dist/` is gitignored — always reproducible from source.
+`writing-skills` bundles its pinned YAML and Markdown parsers into one checker
+file. Its artifact contains neither `package.json` nor `node_modules`, so the
+installed checker needs no package installation or network access.
+
+`dist/` is gitignored and reproducible from source.
 
 ## No manifest
 
-A skill carries **no metadata file**. Its identity is the directory: the name is
-the dir name, and a `mise.toml` marks the dir as a skill. There is no `skill.json`
-declaring kind / capability / harness targets / dependencies, because:
+An install unit carries **no metadata file**. Its install identity is its
+top-level directory name; nested directories containing `SKILL.md` define the
+runtime skills in that unit. A unit's `mise.toml` marks build ownership. There
+is no `skill.json` declaring kind / capability / harness targets / dependencies,
+because:
 
 - **targets** — skills are assumed harness-agnostic (markdown is universal; a
-  Java agent is JVM-bound, not harness-bound). The harness is chosen at install
-  time (`--harness`), not declared per skill.
-- **depends** — no skill depends on another; the closure machinery was unused.
-- **runsCode / kind / summary** — decorative. `runsCode` was a non-blocking
+  Java agent is JVM-bound, not harness-bound). The destination is chosen at
+  install time with `--harness` or `--target`, not declared per skill.
+- **depends**: families provide structural cohesion without dependency closure.
+- **runsCode / kind / summary**: decorative. `runsCode` was a non-blocking
   install warning that informs nobody in a self-authored repo; the canonical
   one-liner already lives in `SKILL.md` frontmatter `description`.
 
-If a real cross-skill dependency, a harness-incompatible skill, or third-party
-distribution ever appears, reintroduce a minimal manifest then — the data would
-differ anyway. Until then: a skill is a dir with a `mise.toml`, nothing more.
+If a real cross-unit dependency, a harness-incompatible skill, or third-party
+distribution appears, reintroduce a minimal manifest then. Until then, the
+install unit is the top-level directory; `mise.toml` only marks a complex build.
 
 ## Install / uninstall
 
-`install` does **clean-then-copy** from `skills/<name>/dist/<name>/` into the
-harness dir. `uninstall` removes the installed directory. Harness paths default
-to `~/.claude/skills`, `~/.pi/agent/skills`, `~/.codex/skills`; override with
-`SKILLS_HARNESS_<NAME>`.
+`install` does **clean-then-copy** for complete top-level units. A standalone
+unit lands at `<destination>/<unit>/`; a family lands there with all member
+skills nested beneath it. Use `--harness <name>` for a known harness or
+`--target <dir>` for any skills directory; the options are mutually exclusive.
+Harness paths default to `~/.claude/skills`, `~/.pi/agent/skills`, and
+`~/.codex/skills`; override them with `SKILLS_HARNESS_<NAME>`.
+`uninstall` remains harness-based and removes the complete unit.
 
 ### The install ledger — ownership memory
 
-A harness dir is shared: other tools and hand-written skills live there too. To
-avoid destroying one and to track our own installs across source deletions, the
-runner keeps a ledger at **`<harness>/.isp-skills.json`** — `{ name: distHash }`
-for every skill **we** installed. It lives at the harness root (outside skill
-dirs), so per-skill drift hashing is unaffected. This is install-time runtime
-state, distinct from skill source — the kind of thing byte-hashing can't supply
-(it answers "is this current?", never "did _we_ put it here?").
+A destination dir is shared: other tools and hand-written skills may live there
+too. To avoid destroying one and to track our own installs across source
+deletions, the runner keeps a ledger at **`<destination>/.isp-skills.json`** —
+`{ unit: artifactHash }`
+for every unit **we** installed. It lives at the destination root, outside unit
+directories, so status hashing is unaffected. This is install-time runtime
+state, distinct from skill source: byte-hashing can answer "is this current?",
+but never "did we put it here?".
 
 It closes two holes a nameless install can't:
 
-- **Foreign collision.** Installing `<name>` when a dir of that name exists that
-  is **not** in the ledger and differs from ours → `install` **refuses** rather
-  than clobber it. `--force` takes it over (and records it). A pre-existing copy
-  byte-identical to ours is silently _adopted_ into the ledger (no clobber), so
-  upgrading from the pre-ledger era is seamless.
-- **Orphans.** Delete a skill from `skills/` and its install is unreachable by
-  name. `status` flags any ledger entry with no source as **`ORPHAN`**;
-  `uninstall --orphans` removes those installs and their ledger entries (the
-  discovery half of uninstall — for when you no longer have the name to type).
+- **Foreign collision.** Installing `<unit>` when a directory of that name
+  exists, is **not** in the ledger, and differs from ours causes `install` to
+  **refuse** rather than clobber it. `--force` takes it over and records it. A
+  pre-existing copy byte-identical to ours is adopted into the ledger without
+  copying.
+- **Orphans.** Delete a unit from `skills/` and `status` flags its ledger entry
+  as **`ORPHAN`**. `uninstall --orphans` removes those installs and their ledger
+  entries.
 
-`uninstall` is symmetric: it removes only dirs in our ledger and **refuses** a
-same-named dir we did not install (`--force` overrides). So neither `install` nor
-`uninstall` ever destroys a foreign skill without an explicit `--force`.
+`uninstall` is symmetric: it removes only unit directories in our ledger and
+**refuses** a same-named directory we did not install unless `--force` is used.
 
-`list`, `status`, `install`, `uninstall` are pure node in `scripts/skills.mjs`.
-`build`/`verify`/`fmt`/`lint` are native mise monorepo tasks, not node.
+`list`, `status`, `install`, and `uninstall` are implemented by the dependency-free
+`scripts/skills.mjs`. Build, verify, format, and lint remain mise task entrypoints.
 
 ## Format & lint
 
@@ -137,27 +147,28 @@ Two root tools cover every skill's common file types, configured once:
 
 `mise run fmt` writes; `mise run lint` is read-only and fails on errors (style
 nits like compact ternaries are downgraded to warnings — surfaced, not blocking).
-Both skip the self-owned `skills/fxdriver/` subtree and gitignored paths.
+Both respect gitignored paths. Biome excludes fxdriver because its Java sources
+belong to the Maven toolchain; dprint still handles its Markdown and configuration.
 
-**Skills extend.** A skill that has files the root tools don't cover declares its
-own `[tasks.fmt]` / `[tasks.lint]` in its `mise.toml`; the root `fmt`/`lint` then
-fans out via `//skills/...:fmt`, which runs only in skills that define it.
-fxdriver does this for Java (spotless) — root handles its markdown/js, fxdriver
-owns its Java formatting. Same hierarchy as build/verify.
+**Complex skills extend.** A complex owner may declare `[tasks.fmt]` or
+`[tasks.lint]` in its `mise.toml`; the root tasks fan out only to owners defining
+those tasks. fxdriver uses Spotless for Java while root tooling handles common
+repository formats.
 
 ## mise's role
 
-mise pins **runtimes** per skill (node, java), **owns each skill's
-build/verify/fmt/lint tasks**, and is the task entrypoint. Pin every executable
-invoked by tasks or tests in the nearest applicable `[tools]`; tool upgrades must
-preserve unrelated tools. mise does **not** resolve a skill's own dependency
-graph — that stays with the skill's package manager (Maven). A teammate who only
-wants the markdown/script skills never needs a JDK.
+mise pins repository tools and complex skills' runtimes, owns complex
+build/verify/fmt/lint tasks, and is the task entrypoint. Pin every executable
+invoked by tasks or tests in the nearest applicable `[tools]`; tool upgrades
+must preserve unrelated tools. mise does **not** resolve a complex skill's own
+dependency graph; that stays with its package manager.
 
 ## Adding a skill
 
-1. `mkdir skills/<name>`, write `SKILL.md` (frontmatter `name` must equal `<name>`).
-2. Write `skills/<name>/mise.toml` with `[tasks.build]` (emit `./dist/<name>/`)
-   and `[tasks.verify]`. Copy the nearest existing skill by complexity. Add
-   `[tools]` if it needs a runtime to build. This file marks the dir as a skill.
-3. `mise run //skills/<name>:build` then `mise run install -- <name> --harness <h>`.
+1. Put a standalone Markdown skill at `skills/<unit>/SKILL.md`, or put related
+   skills beneath one family directory such as `skills/java/<name>/SKILL.md`.
+   Frontmatter `name` must equal the skill directory name.
+2. For a complex unit, add `mise.toml`, build and verify tasks, and reproducible
+   `dist/<name>/` outputs.
+3. Install the top-level unit with `mise run install -- <unit> --harness <h>` or
+   `mise run install -- <unit> --target <dir>`.

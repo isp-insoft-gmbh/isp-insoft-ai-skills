@@ -1,8 +1,7 @@
-# Build outputs — never committed. Reproduced from source via `mise run build`.
-# Each skill emits skills/<name>/dist/<name>/.
+# Complex-skill build outputs, reproduced via `mise run build`.
 dist/
 
-# Per-skill build artifacts.
+# Complex-skill package/build artifacts.
 target/
 node_modules/
 

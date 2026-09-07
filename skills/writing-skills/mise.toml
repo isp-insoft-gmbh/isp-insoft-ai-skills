@@ -1,0 +1,16 @@
+# writing-skills — Node checker bundled into a dependency-free artifact.
+[tasks.build]
+description = "Bundle checker and pack dist/writing-skills"
+run = [
+  "npm ci --ignore-scripts",
+  "node scripts/build.mjs",
+  "node ../../scripts/pack.mjs --clean-root --from target/writing-skills",
+]
+
+[tasks.verify]
+description = "Validate source, checker behavior, and self-contained bundle"
+run = [
+  "node ../../scripts/check.mjs",
+  "npm ci --ignore-scripts",
+  "npm test",
+]

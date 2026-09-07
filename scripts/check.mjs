@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Lightweight skill verify: SKILL.md has YAML frontmatter with a `name` that
-// matches the directory and a `description`. This is the real `verify` for
-// markdown/script skills (skills with a build step verify via their toolchain).
+// Lightweight complex-owner check: SKILL.md has YAML frontmatter with a `name`
+// matching the directory and a `description`. Repository-wide source validation
+// belongs to check-frontmatter.mjs.
 import fs from 'node:fs';
 import path from 'node:path';
 

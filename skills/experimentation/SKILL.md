@@ -1,6 +1,6 @@
 ---
 name: experimentation
-description: "Use when agent is about to create/run throwaway code or generated artifacts—scratch scripts, spikes, probes, PoCs, one-off parsers/converters, microbenchmarks, API/dependency behavior checks—to answer a narrow technical question. Enforces falsifiable hypothesis, controls/baselines, independent verification, provenance, promote-or-delete, and cleanup. Do not use for normal feature implementation/review, permanent project tests, or web research without scratch code/artifacts."
+description: "Use for throwaway code or artifacts investigating a technical question. Not normal implementation, permanent tests, or artifact-free research."
 ---
 
 # Experimentation

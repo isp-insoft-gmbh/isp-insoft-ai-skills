@@ -1,15 +1,14 @@
 # isp-insoft-ai-skills — root config.
 #
-# mise's job here: pin RUNTIMES and be the task entrypoint. It does NOT resolve
-# a skill's own dependency graph — that stays with the skill's package manager
-# (maven for fxdriver). Per-skill mise.toml (e.g. skills/fxdriver) adds the
-# tools that skill needs to build. Config merges down the tree.
+# mise pins repository runtimes and is the task entrypoint. Markdown-only units
+# remain in their natural hierarchy and need no local config or build. Complex
+# units such as fxdriver and writing-skills define mise.toml with their build,
+# verification, and additional tools.
 #
-# This is a mise MONOREPO root: each skill's tasks are addressable as
-# //skills/<name>:<task>, and running one auto-activates that skill's [tools]
-# (java for fxdriver) — no -C delegation. //skills/...:<task> fans out to every
-# skill that defines <task>. config_roots must be listed (auto-discovery is
-# deprecated). The `...` recursive token is the wildcard — NOT `*`.
+# This is a mise MONOREPO root: complex-unit tasks are addressable as
+# //skills/<unit>:<task>, with their [tools] active. //skills/...:<task> fans out
+# to every complex unit defining that task. config_roots must be listed because
+# auto-discovery is deprecated. The recursive wildcard is `...`, not `*`.
 monorepo_root = true
 
 [monorepo]
@@ -22,7 +21,7 @@ dprint = "0.55.1" # fmt: markdown (+frontmatter), json, toml
 biome = "2.5.3" # fmt + lint: js/mjs
 
 [tasks.list]
-description = "List skills: name, kind, build state, harnesses, description"
+description = "List skills: one terminal line per name and description"
 run = "node scripts/skills.mjs list"
 
 [tasks.test]
@@ -30,12 +29,15 @@ description = "Run Node regression tests for the repo helper scripts"
 run = "node --test \"scripts/*.test.mjs\""
 
 [tasks.build]
-description = "Build all skills into dist/<name>/. One skill: mise run //skills/fxdriver:build"
+description = "Build complex skills into dist/<name>/. Markdown-only skills need no build."
 run = "mise run //skills/...:build"
 
 [tasks.verify]
-description = "Full check per skill (thorough). One skill: mise run //skills/fxdriver:verify"
-run = "mise run //skills/...:verify"
+description = "Validate all skill sources, then run complex skill verification"
+run = [
+  "node scripts/check-frontmatter.mjs --source",
+  "mise run //skills/...:verify",
+]
 
 [tasks.fmt]
 description = "Format md/json/toml (dprint) + js (biome), then any skill's own fmt"
@@ -55,15 +57,15 @@ run = [
 ]
 
 [tasks.status]
-description = "Drift per skill+harness: current | STALE | not-installed | ORPHAN. e.g. mise run status -- --harness claude"
+description = "Drift per install unit and harness: current | STALE | not-installed | ORPHAN"
 run = "node scripts/skills.mjs status"
 
 [tasks.install]
-description = "Install into a harness. e.g. mise run install -- --harness claude"
+description = "Install into a harness or target dir. e.g. mise run install -- --target ../skill-library"
 run = "node scripts/skills.mjs install"
 
 [tasks.install-all]
-description = "Build, then install all skills into claude, pi, and codex"
+description = "Build, then install all units into claude, pi, and codex"
 run = [
   "mise run build",
   "node scripts/skills.mjs install --harness claude",

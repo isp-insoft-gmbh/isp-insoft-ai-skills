@@ -1,8 +1,0 @@
-# desloppy — pure markdown. Build is a prune-copy into dist/.
-[tasks.build]
-description = "Pack SKILL.md -> dist/desloppy"
-run = "node ../../scripts/pack.mjs"
-
-[tasks.verify]
-description = "Validate SKILL.md frontmatter"
-run = "node ../../scripts/check.mjs"

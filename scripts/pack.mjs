@@ -5,6 +5,7 @@
 //   pack.mjs                copy the skill source (pruned)  -> ./dist/<name>/
 //   pack.mjs --from <dir>   copy a built output dir verbatim -> ./dist/<name>/
 //   pack.mjs --name <name>  write to ./dist/<name>/ (for bundled companions)
+//   pack.mjs --clean-root   remove ./dist before writing the first family member
 //
 // Every artifact must contain SKILL.md or packing fails.
 import fs from 'node:fs';
@@ -22,7 +23,11 @@ const DENY = new Set(['mise.toml', 'target', 'node_modules', '.git', 'dist']);
 
 const builtFrom = argValue('--from');
 const src = builtFrom ? path.resolve(CWD, builtFrom) : CWD;
-const dest = path.join(CWD, 'dist', name);
+const distRoot = path.join(CWD, 'dist');
+const dest = path.join(distRoot, name);
+
+if (process.argv.includes('--clean-root'))
+  fs.rmSync(distRoot, { recursive: true, force: true });
 
 if (!fs.existsSync(path.join(src, 'SKILL.md'))) {
   process.stderr.write(
