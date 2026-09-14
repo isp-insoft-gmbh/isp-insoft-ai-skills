@@ -6,7 +6,7 @@ description: "Use for throwaway code or artifacts investigating a technical ques
 # Experimentation
 
 Temp code = experiment.
-Learn → verify → promote/delete → clean.
+Learn → verify → preserve useful evidence → leave the repo clean.
 
 ## Trigger
 
@@ -33,7 +33,8 @@ Falsifier: false if <specific obs>
 Control/baseline: ...
 Cmd/input/env: ...
 Artifacts: <temp paths>
-Cleanup: delete <paths> unless promoted
+Repo cleanup: delete <repo paths> unless promoted
+External retention: keep/delete <temp, cache, or OS state> because <value>
 ```
 
 Unfalsifiable H ⇒ rewrite.
@@ -94,7 +95,7 @@ Use ≥2 independent checks when possible.
 1 green run = weak evidence.
 Log/screenshot without cmd provenance = weak.
 
-### 5. Promote | summarize | delete
+### 5. Promote | summarize | retain | delete
 
 Classify every artifact:
 
@@ -102,8 +103,11 @@ Classify every artifact:
   durable test/fixture/doc/bench harness/script/repro.
 - **Summarize**:
   learned fact only → response/issue/commit msg.
+- **Retain**:
+  useful temp/cache/OS artifacts outside the repo.
+  Record location, purpose, and expected lifetime.
 - **Delete**:
-  temp script/output/cache/log/download/build product.
+  repo-local temporary artifacts and external artifacts without future value.
 
 Promotion requirements:
 
@@ -115,11 +119,14 @@ Promotion requirements:
 
 Before final answer:
 
-1. Stop started processes.
-2. Delete created scratch files/dirs/outputs/logs/caches/dumps/ad-hoc fixtures.
-3. Keep only explicitly promoted artifacts.
-4. `git status --short` if git.
-5. Explain/ask about unknown leftovers.
+1. Stop processes that are no longer useful.
+2. Delete experiment-created temporary artifacts inside the repository unless
+   promoted.
+3. Preserve useful and safe temp, cache, or OS state outside the repository.
+4. Report retained external state and ask if its footprint or side effects are
+   uncertain.
+5. `git status --short` if git.
+6. Explain/ask about unknown repository leftovers.
 
 Delete rule:
 
@@ -127,6 +134,8 @@ Delete rule:
 Only delete explicit paths created by this experiment.
 Never delete user data, research cache, repo files, broad globs, or git-clean
 without confirmation.
+Cleanup means leaving the user's repository clean, not erasing useful external
+experimental state.
 ```
 
 Final report shape:
@@ -135,6 +144,7 @@ Final report shape:
 Result: supported | falsified | inconclusive
 Evidence: cmd(s) + checks
 Promoted: <paths + why>
+Retained: <external paths/state + why>
 Cleaned: <paths>
 Remaining: <intentional dirty paths>
 ```

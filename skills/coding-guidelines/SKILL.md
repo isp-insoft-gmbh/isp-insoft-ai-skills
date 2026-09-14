@@ -28,7 +28,9 @@ Rules:
 - half-tested is not tested. Test all features before claiming tested.
 - do not disable checks instead of fixing or testing.
 - do not add unwanted compatibility cruft or unrequested scope.
-- Performance matters; dependencies are vetted, few, and suspect by default.
+- Performance and allocation behavior matter; assess costs before replacing views
+  with copies or adding intermediate collections. Dependencies are vetted, few,
+  and suspect by default.
 - STOP SMOKING! `smoke` is a bad name -> use semantic names!
 
 Heuristics (decide like this):
