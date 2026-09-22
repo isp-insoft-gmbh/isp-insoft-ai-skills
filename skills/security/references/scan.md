@@ -1,15 +1,8 @@
 # Scan
 
 Review authorized first-party product code and configuration for likely security defects.
-Return bounded, source-backed candidates that the regression-testing phase can confirm.
-
-## Boundaries
-
-- Work only within the repository, product, or subtree requested by the user.
-- Do not mutate project files, Jira, GitHub, production systems, or external services.
-- Limit output to source evidence, uncertainty, and local regression-test handoffs.
-- Do not run dependency/CVE, secret, compliance, or generic SAST scanners unless separately requested.
-- A candidate is not a confirmed finding.
+Return bounded, source-backed candidates and identify which still need regression testing.
+Read-only: change no file, branch, or external system in this phase.
 
 ## Scope
 
@@ -31,25 +24,19 @@ Exclude:
 
 ## Review loop
 
-### 1. Preflight
+### 1. Understand the system
 
-1. Resolve the requested repository, product, or subtree.
-2. Record canonical repository identity, current ref, exact commit, and initial working-tree state.
-3. Identify explicit scope limits and unavailable surfaces.
-
-### 2. Understand the system
-
-Infer relevant deployment assumptions, roles, data boundaries, entry points, and security invariants from repository evidence.
+Infer deployment assumptions, roles, data boundaries, entry points, and security invariants from repository evidence.
 Keep the model proportional to the requested scope.
 A supplied diff may set priority but never replaces surrounding-flow inspection.
 
-### 3. Inspect behavior
+### 2. Inspect behavior
 
 Trace user-controlled data, identity, authorization, state transitions, isolation, and cross-component assumptions through production paths.
 Prefer concrete data and control flow over language-specific checklists.
 Inspect callers and shared routes before attributing a defect to a leaf function.
 
-### 4. Form candidates
+### 3. Form candidates
 
 A reportable candidate requires:
 
@@ -58,88 +45,49 @@ A reportable candidate requires:
 - source-backed expected and apparent behavior;
 - a plausible security consequence;
 - explicit assumptions and uncertainty;
-- one minimal local regression-test seam.
+- one minimal local regression-test seam, unless reusable evidence later supports skipping regression.
 
 Discard generic hardening advice, checklist matches without a concrete flow, and suspicions lacking production-source evidence.
-Group manifestations sharing one root cause and invariant.
-
+Group manifestations sharing one root cause and invariant into one candidate with one codename.
 Do not validate candidates in this phase.
-If runtime confirmation is needed, provide a concise handoff for the regression-testing phase.
+
+### 4. Check known issues
+
+When authorized read-only Jira access is available, compare every candidate with existing Bugs labelled `ai-sec-scan` in the default `RD` project or an explicitly selected destination project.
+Fetch detailed ticket evidence only for semantically related summaries.
+Match by root cause and security invariant, not codename or wording alone.
+Make no Jira mutation.
+
+Classify each candidate:
+
+- `unavailable`: Jira access is unavailable or unauthorized;
+- `none`: no semantically matching ticket exists;
+- `covered RD-…`: existing evidence establishes the same root cause and invariant, and current source inspection reveals no change that invalidates that evidence;
+- `needs-refresh RD-…`: an existing ticket is relevant, but one material assumption, affected path, or consequence needs current evidence.
+
+Do not require new regression evidence solely because the commit, surrounding code, ticket status, or wording changed.
+Require it only when a change could invalidate the existing proof or materially alter triage.
+The lookup is advisory; private disclosure repeats authoritative deduplication because Jira state may change.
 
 ### 5. Account and report
 
-Confirm the working tree still matches the preflight snapshot.
-Report only assessed surfaces, limitations, and source-backed candidates.
+Confirm the working tree is still clean.
+Report only assessed surfaces, limitations, and source-backed candidates, in the session-report format.
 
-## Completion
+## Candidate cards
 
-Status is:
+The scan phase body is a list of candidate cards.
 
-- `complete`: requested surfaces were reviewed to the declared depth and every candidate was resolved for handoff or discarded;
-- `partial`: useful review completed, but named surfaces or evidence remained unavailable;
-- `blocked`: repository state or missing context prevented meaningful review.
-
-Completion means the bounded review finished.
-It does not mean the product is secure or that candidates are confirmed defects.
-
-## Report schema
-
-Return exactly one concise Markdown report in the session.
-Do not create a local report file.
-
-### Header
-
-```markdown
-# Defensive security review: <target>
-
-**Status:** complete | partial | blocked
-**Revision:** <repository> · <ref> · <commit>
-**Working tree:** unchanged | changed unexpectedly
-```
-
-Add one direct warning when source state or review integrity is unreliable.
-
-### Coverage and limitations
-
-```markdown
-## Coverage and limitations
-
-- Examined: <product surfaces and boundaries>
-- Partial: <surface and reason>
-- Skipped: <surface and reason>
-```
-
-Name behavior surfaces and boundaries, not file counts.
-Never use coverage percentages or claim security assurance.
-
-### Candidate index
-
-Omit this section when no candidate met the evidence gate.
-
-```markdown
-## Candidates
-
-| # | Candidate                                | Product surface | Confidence |
-| - | ---------------------------------------- | --------------- | ---------- |
-| 1 | Session rotation may preserve old access | Authentication  | medium     |
-```
-
-Confidence describes source evidence, not impact severity:
-
-- `high`: production flow and invariant conflict are directly visible;
-- `medium`: source flow is concrete, but a deployment or runtime assumption remains;
-- `low`: do not report; keep inspecting or discard.
-
-### Candidate cards
-
-Use the same structure for every candidate:
+Number cards sequentially.
+Every card repeats every section below, in this order, even when a section is short.
 
 ```markdown
 ---
 
-## 1. Session rotation may preserve old access
+## <n>. <codename>: <short description>
 
-**Confidence:** medium
+**Confidence:** high | medium
+**Known issue:** unavailable | none | covered `RD-…` | needs-refresh `RD-…`
 
 ### Security invariant
 
@@ -161,17 +109,28 @@ Use the same structure for every candidate:
 
 ### Regression-test handoff
 
-- Test seam: <existing test area or smallest suitable fixture>
-- Expected property: <observable invariant>
-- Control: <nearby allowed or invariant-preserving case>
+- Decision: full | focused | skip
+- Reason: <why this amount of regression work remains>
+- Test seam: <existing test area or smallest suitable fixture | not needed>
+- Expected property: <observable invariant | not needed>
+- Control: <nearby allowed or invariant-preserving case | not needed>
 ```
 
-Keep candidate reports source-focused and bounded.
-Candidates remain unconfirmed until regression testing exercises the production path.
+Confidence describes source evidence, not impact severity:
 
-### No candidates
+- `high`: production flow and invariant conflict are directly visible;
+- `medium`: source flow is concrete, but a deployment or runtime assumption remains;
+- `low`: do not report; keep inspecting or discard.
 
-Use direct language:
+Regression decisions follow directly from known-issue classification:
+
+- `unavailable` or `none` → `full`;
+- `needs-refresh RD-…` → `focused` on the unresolved difference;
+- `covered RD-…` → `skip`.
+
+For `skip`, use `not needed` for test seam, expected property, and control.
+
+## No candidates
 
 ```markdown
 ## Result
