@@ -102,13 +102,15 @@ install unit is the top-level directory; `mise.toml` only marks a complex build.
 
 ## Install / uninstall
 
-`install` does **clean-then-copy** for complete top-level units. A standalone
+`mise sk add` does **clean-then-copy** for complete top-level units. A standalone
 unit lands at `<destination>/<unit>/`; a family lands there with all member
 skills nested beneath it. Use `--harness <name>` for a known harness or
 `--target <dir>` for any skills directory; the options are mutually exclusive.
 Harness paths default to `~/.claude/skills`, `~/.pi/agent/skills`, and
 `~/.codex/skills`; override them with `SKILLS_HARNESS_<NAME>`.
-`uninstall` remains harness-based and removes the complete unit.
+`mise sk remove` remains harness-based and removes the complete unit.
+Bare `mise sk` opens destination selection, then picks skills for a new destination or updates an existing inventory.
+Use `add --pick` to add skills to an existing destination.
 
 ### The install ledger — ownership memory
 
@@ -124,19 +126,25 @@ but never "did we put it here?".
 It closes two holes a nameless install can't:
 
 - **Foreign collision.** Installing `<unit>` when a directory of that name
-  exists, is **not** in the ledger, and differs from ours causes `install` to
+  exists, is **not** in the ledger, and differs from ours causes `add` to
   **refuse** rather than clobber it. `--force` takes it over and records it. A
   pre-existing copy byte-identical to ours is adopted into the ledger without
   copying.
 - **Orphans.** Delete a unit from `skills/` and `status` flags its ledger entry
-  as **`ORPHAN`**. `uninstall --orphans` removes those installs and their ledger
-  entries.
+  as **`ORPHAN`**.
+  Interactive `update` and `remove --orphans` show installed descriptions and ask before deleting each orphan and its ledger entry.
+  Non-interactive runs preserve orphans.
 
-`uninstall` is symmetric: it removes only unit directories in our ledger and
+`remove` is symmetric: it removes only unit directories in our ledger and
 **refuses** a same-named directory we did not install unless `--force` is used.
 
-`list`, `status`, `install`, and `uninstall` are implemented by the dependency-free
-`scripts/skills.mjs`. Build, verify, format, and lint remain mise task entrypoints.
+`update` only considers inventoried units and preserves local edits by default.
+`update --force` requires an explicit harness or target, warns about discarded edits, and confirms in a terminal before replacing them.
+Without a terminal, scoped `--force` counts as consent.
+Successful updates refresh ledger hashes; missing installed directories are skipped.
+
+`list`, `status`, `add`, `update`, and `remove` are subcommands of `mise sk`, implemented by the dependency-free `scripts/skills.mjs`.
+Build, verify, format, and lint remain separate mise tasks.
 
 ## Format & lint
 
@@ -170,5 +178,5 @@ dependency graph; that stays with its package manager.
    Frontmatter `name` must equal the skill directory name.
 2. For a complex unit, add `mise.toml`, build and verify tasks, and reproducible
    `dist/<name>/` outputs.
-3. Install the top-level unit with `mise run install -- <unit> --harness <h>` or
-   `mise run install -- <unit> --target <dir>`.
+3. Install the top-level unit with `mise run sk -- add <unit> --harness <h>` or
+   `mise run sk -- add <unit> --target <dir>`.

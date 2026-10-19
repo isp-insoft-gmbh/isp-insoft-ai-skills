@@ -20,10 +20,6 @@ yq = "4.53.3" # parses YAML frontmatter without npm deps
 dprint = "0.55.1" # fmt: markdown (+frontmatter), json, toml
 biome = "2.5.3" # fmt + lint: js/mjs
 
-[tasks.list]
-description = "List skills: one terminal line per name and description"
-run = "node scripts/skills.mjs list"
-
 [tasks.test]
 description = "Run Node regression tests for the repo helper scripts"
 run = "node --test \"scripts/*.test.mjs\""
@@ -56,23 +52,7 @@ run = [
   "mise run //skills/...:lint",
 ]
 
-[tasks.status]
-description = "Drift per install unit and harness: current | STALE | not-installed | ORPHAN"
-run = "node scripts/skills.mjs status"
-
-[tasks.install]
-description = "Install into a harness or target dir. e.g. mise run install -- --target ../skill-library"
-run = "node scripts/skills.mjs install"
-
-[tasks.install-all]
-description = "Build, then install all units into claude, pi, and codex"
-run = [
-  "mise run build",
-  "node scripts/skills.mjs install --harness claude",
-  "node scripts/skills.mjs install --harness pi",
-  "node scripts/skills.mjs install --harness codex",
-]
-
-[tasks.uninstall]
-description = "Remove from a harness. e.g. mise run uninstall -- fxdriver --harness claude"
-run = "node scripts/skills.mjs uninstall"
+[tasks.sk]
+description = "Manage skills: interactive setup, add, remove, update, status, list"
+raw = true
+run = "node scripts/skills.mjs"

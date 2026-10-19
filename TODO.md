@@ -1,5 +1,12 @@
 # TODO
 
+## Shared skill distribution
+
+- [ ] Discuss project-level Mise adoption with the team before changing shared project workflows.
+- [ ] Evaluate Packslip releases + builtin `mise skills` in one team-approved pilot project.
+      Compare version pinning, automatic skill sync, harness destinations, Windows symlink support, release/signing overhead, and contribution flow for shared-skill edits.
+      Keep the current installer until the pilot demonstrates a simpler workflow and the team agrees to migrate.
+
 ## IntelliJ IDEA CLI Formatter Learnings
 
 Context: verified on Windows with IntelliJ IDEA 2026.1.3 installed through
