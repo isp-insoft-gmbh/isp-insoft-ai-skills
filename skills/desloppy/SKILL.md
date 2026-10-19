@@ -1,50 +1,52 @@
 ---
 name: desloppy
-description: "Use when the user asks to desloppy, clean up, simplify, refactor, or review a specific file, directory, diff, or code scope for messy/sloppy code, code smells, technical debt, duplication, complexity, or overengineering."
+description: "Use when cleaning or refactoring existing code to remove accidental complexity, duplication, needless indirection, weak types, or overengineering without changing behavior."
 ---
 
-# Find ugliest slop in code and fix it
+# Desloppy
 
-## Trigger points
+Slop works, but costs too much to read, change, or trust.
 
-Use for broad cleanup/refactor reviews of existing code when the user wants the
-agent to find high-impact slop.
+## Boundary
 
-Do not use for normal feature work, exact bug fixes, formatting-only changes, or
-cases where the user already specified the exact change to make.
+- Existing code only.
+- Preserve observable behavior, public APIs, error meaning, security boundaries, accessibility, and relevant performance behavior.
+- No features, unrelated bug fixes, weakened tests, or scope creep.
+- Deletion beats addition.
 
-## Instructions
+## Scope
 
-1. **Scan** - Find the ugliest code
-2. **Identify** - What makes it slop?
-   (nesting, long functions, magic numbers, no types)
-3. **Propose** - Pick 1-3 slops with highest impact
-4. **Approve** - Report minimal and terse first; wait for approval
-5. **Fix** - Rewrite cleanly, with project code style
-6. **Verify** - Run tests after fixes and create regression tests beforehand, to
-   make sure to not break old behavior
+- One scope is one place or one cross-cutting seam.
+  Never both.
+- State scope in one sentence.
+- Cannot enumerate callers, tests, and affected boundaries → shrink scope.
 
-Focus on ugly code. Read the relevant reference before proposing fixes:
+## Work
 
-- `references/deep-nesting.md` — deep nesting → flatten
-- `references/long-functions.md` — long functions → analyze before extracting
-- `references/single-use-functions.md` — single use functions → inline
-- `references/magic-values.md` — magic values → name them or express relationships
-- `references/missing-types-docs.md` — missing types/docs → add them
-- `references/poor-error-handling.md` — poor error handling → fix it
-- `references/overengineered-error-handling.md` — overengineered error
-  handling → simplify
-- `references/legacy-overengineering.md` — "legacy" or "backwards
-  compatibility" → verify the need
-- `references/complexity.md` — complexity → disentangle dependencies
-- `references/duplication.md` — duplication → remove only when changes should
-  stay together
-- `references/poor-patterns.md` — poor patterns → challenge mechanical Clean
-  Code / OOP ceremony
+1. Read scope in full, then callers, tests, public API, and project instructions.
+2. Read only references triggered by code:
+   - `references/deep-nesting.md` → flatten control flow
+   - `references/long-functions.md` → separate jobs only when separation helps
+   - `references/single-use-functions.md` → remove single-use indirection
+   - `references/magic-values.md` → expose hidden meaning or relationships
+   - `references/missing-types-docs.md` → sharpen types; remove noisy comments
+   - `references/poor-error-handling.md` → preserve useful error information
+   - `references/overengineered-error-handling.md` → remove excess machinery
+   - `references/legacy-overengineering.md` → verify compatibility claims
+   - `references/complexity.md` → disentangle dependencies
+   - `references/duplication.md` → unify knowledge that must change together
+   - `references/poor-patterns.md` → remove unearned ceremony
+3. Run smallest project-defined gates covering scope.
+   Keep pre-existing failures visible.
+4. Choose highest-impact behavior-preserving cleanup inside scope.
+5. Existing tests do not prove preserved behavior → add focused proof before refactoring.
+   Never change test expectations merely to make refactor pass.
+6. Make smallest surgical change.
+   Second scope appears → leave it.
+7. Run relevant project-defined gates again.
 
-Add confidence level to each proposed slop fix:
+## Authority
 
-- **SAFE** - unlikely to introduce breaking changes
-- **RISKY** - likely to introduce breaking changes
-
-No mercy.
+- Project instructions, source, tests, and project-defined gates outrank this skill.
+- `references/*.md` provide local, conditional guidance.
+- No other skill required.
