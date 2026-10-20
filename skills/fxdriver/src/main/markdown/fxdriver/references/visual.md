@@ -1,12 +1,14 @@
 # visual artifacts
 
+Use [runtime preflight](runtime.md) for executable/JAR paths and example placeholders.
+
 fxdriver visual primitives are inputs for agent judgment, not a built-in quality
 policy.
 
 ## Screenshot
 
-```sh
-java -jar @fxdriver.skill.jar@ screenshot <port> target/ui.png
+```text
+<driver-java> -jar <driver-jar> screenshot <port> <temp-dir>/ui.png
 ```
 
 Output shape:
@@ -35,14 +37,15 @@ Output shape:
 
 Read the image when making visual/layout/color claims. Screenshots are optimized
 lossless PNGs by default (max PNG compression where available, RGB when fully
-opaque). To avoid context bloat, prefer the smallest screenshot that can answer
-the question once node/rect screenshots exist; keep full-size PNGs on disk for
-audit/diff truth.
+opaque). Prefer the smallest supported node/rect screenshot that answers the question; retain full-size PNGs in private OS temp for audit/diff truth.
+Snapshots use JavaFX scene/node rendering, not OS desktop compositing.
+`activeWindow` describes the captured window, not proof of desktop focus or physical occlusion.
+Sensitive pixels are masked by default; never disable masking merely to satisfy an evidence checklist.
 
 ## Image summary
 
-```sh
-java -jar @fxdriver.skill.jar@ image-summary target/ui.png
+```text
+<driver-java> -jar <driver-jar> image-summary <temp-dir>/ui.png
 ```
 
 Use for quick sanity:
@@ -56,8 +59,8 @@ Do not use average color/hash as proof of layout quality.
 
 ## Image diff
 
-```sh
-java -jar @fxdriver.skill.jar@ image-diff target/before.png target/after.png target/diff.png
+```text
+<driver-java> -jar <driver-jar> image-diff <temp-dir>/before.png <temp-dir>/after.png <temp-dir>/diff.png
 ```
 
 Output fields:
@@ -77,7 +80,7 @@ scale, and dimensions.
 Use this progressive order:
 
 1. `snapshot --summary` for windows/titles/key controls.
-2. Full `snapshot` for structure/bounds/semantics.
+2. Targeted `query` or bounded model reads; full `snapshot` only for missing structure/bounds/semantics.
 3. `image-summary` for dimensions/hash sanity.
 4. Read full screenshot only when layout/color/visual quality matters.
 5. Prefer cropped/node/rect screenshots when they answer the question.
@@ -86,8 +89,8 @@ Use this progressive order:
 Screenshot target examples:
 
 ```json
-{"target":"node","selector":"#details","path":"target/details.png"}
-{"target":"rect","window":"w1","x":0,"y":0,"w":640,"h":360,"path":"target/crop.png"}
+{"target":"node","selector":"#details","path":"<temp-dir>/details.png"}
+{"target":"rect","window":"w1","x":0,"y":0,"w":640,"h":360,"path":"<temp-dir>/crop.png"}
 ```
 
 Do not use downscaled/cropped images as sole proof for tiny text, contrast, or
@@ -96,11 +99,11 @@ screenshots stay PNG.
 
 ## Common visual workflow
 
-```sh
-java -jar @fxdriver.skill.jar@ screenshot <port> target/before.png
+```text
+<driver-java> -jar <driver-jar> screenshot <port> <temp-dir>/before.png
 # make app/code change; rebuild/relaunch/act
-java -jar @fxdriver.skill.jar@ screenshot <port> target/after.png
-java -jar @fxdriver.skill.jar@ image-diff target/before.png target/after.png target/diff.png
+<driver-java> -jar <driver-jar> screenshot <port> <temp-dir>/after.png
+<driver-java> -jar <driver-jar> image-diff <temp-dir>/before.png <temp-dir>/after.png <temp-dir>/diff.png
 ```
 
 Checklist for human-readable UI:

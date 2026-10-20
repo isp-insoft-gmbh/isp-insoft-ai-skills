@@ -1,146 +1,66 @@
 # fxdriver workflow
 
-## Attach
+## Cross-harness execution
 
-Find Java processes:
+Use the harness's standard shell/process facilities and HTTP, not a custom Pi tool or extension.
+Keep endpoint/token and owned process identity in test-owned session state; reuse them across calls.
+A persistent HTTP caller is an optimization, not a prerequisite; the Java CLI remains a portable fallback.
+Do not introduce a harness-specific workflow engine or app-specific automation into the generic skill.
 
-```sh
-jcmd -l
-```
+## Own the lifecycle
 
-Attach:
+Complete [runtime preflight](runtime.md) before preparing isolated app data or changing cwd.
 
-```sh
-java -jar @fxdriver.skill.jar@ attach <pid>
-export FXDRIVER_TOKEN=<printed-token>
-java -jar @fxdriver.skill.jar@ rpc <printed-port> ping '{}'
-```
+- Inspect project startup instructions and existing processes before launching.
+- Use isolated test-owned data and OS-temp artifacts for experiments.
+- Launch through a persistent supervisor; record its identity immediately.
+- Use verified absolute driver/app Java executables and the installed JAR; do not invoke tool-manager shims under data-isolation overrides.
+- Observe app readiness separately from endpoint readiness.
+- Compare loaded agent SHA-256 with the selected bundled JAR, then read capabilities; identical snapshot versions are not proof.
+- Preserve existing user sessions when an older agent is loaded; do not restart them merely to complete tool installation.
 
-## Observe
+## Spend context on decisions
 
-Start with the compact summary when orienting:
+- Discover navigation by accessible name, form controls by stable ID, unknown controls by filtered role/type/text queries.
+- Prefer advertised summary for orientation, targeted queries for decisions, `tableCell` for model values.
+  Inspect a full snapshot filtered locally only for missing state or relationships.
+  Debug query mode need not expose richer values or traverse table internals.
+- Treat hidden ancestors, empty names, disabled state, virtualized rows and truncation as uncertainty, not permission to guess.
+- Selector fields are conjunctive; refine role/name/window scope rather than accepting the first plausible match.
+- A handle is disposable; rediscover after control replacement and never use recycled virtualized cells as model identity.
+- Roles nominate accessibility operations; verify support/outcomes and never fallback-retry an uncertain dispatch.
 
-```sh
-java -jar @fxdriver.skill.jar@ snapshot <printed-port> --summary > target/fxdriver-summary.json
-```
+## Improve source when it pays
 
-Use a full snapshot when the summary is not enough:
+Within authorized source scope, fix the smallest missing semantic boundary that obstructs driving.
+Use stable domain/input/action IDs, real label associations, named icon actions and keyboard-operable controls.
+Keep IDs independent of translated text, row position, object identity and runtime data.
+Do not label every layout/skin node or add test-only runtime overlays.
+For composite inputs, put the reusable input ID on exactly one active child and keep label association synchronized.
+Rebuild and verify actual targets, driver-visible metadata and required interaction behavior, not merely source assignments.
+Accessibility APIs are a source of driving semantics; general accessibility audits and screen-reader testing are separate tasks.
+Continue to support safe text/role/structural discovery when source cannot be changed.
 
-```sh
-java -jar @fxdriver.skill.jar@ rpc <printed-port> snapshot '{}' > target/fxdriver-snapshot.json
-```
+## Execute short plans
 
-Look for:
+- Batch known dependent primitives with `run`, ending in a meaningful completion predicate.
+- Keep discovery boundaries outside a batch when later targets cannot be known yet.
+- Prefer one persistent HTTP session over one JVM per command.
+- Query the state needed for the next decision; avoid unconditional full snapshots.
+- Verify readback after reload for edits; successful primitive or unchanged Save-button state is insufficient.
+- Separate editor changes from `commit`, replacement from extended selection, layout pulses from rendered evidence.
+- Mark actual secret inputs, including revealed editors, and use sensitive expected-value assertions instead of exposing content.
 
-- visible windows;
-- stable `nodeId` values;
-- actionable buttons/text inputs/lists;
-- exact text vs duplicate skin/internal text;
-- disabled/focused/common node state;
-- `semantic.kind` and control-specific state (`selected`, `value`, `prompt`,
-  `editable`, checkbox indeterminate state, radio toggle group, list/table
-  counts, selected indices/items, focused index, columns, etc.).
+## Recover without repeated mutations
 
-## Choose selectors
-
-Preference order:
-
-1. `nodeId` / `#id`
-2. `eid` if stable within this attached session
-3. `textExact`
-4. `role` + text/accessibility
-5. `type` for broad discovery only
-6. bare text contains only as last resort
-
-Do not copy snapshot or near-match `selectorPath` diagnostics into requests.
-They are deliberately not selectors.
-
-Verify ambiguous selectors with `highlight`:
-
-```sh
-java -jar @fxdriver.skill.jar@ rpc <port> highlight '{"text":"Find"}'
-```
-
-If the workflow needs repeated or future automation and important controls lack
-stable ids, ask the human for permission to add JavaFX ids to the app under
-test. When approved, add the smallest useful set of semantic ids, follow local
-style and naming conventions, and leave them in the app. Do not add broad,
-mechanical ids to every node; target controls that represent user intent,
-navigation landmarks, form fields, menus, tables/lists, and primary actions.
-
-## Act
-
-Examples:
-
-```sh
-java -jar @fxdriver.skill.jar@ rpc <port> click '{"nodeId":"find-duplicates"}'
-java -jar @fxdriver.skill.jar@ rpc <port> click '{"textExact":"Projects","untilQuietMs":500,"timeoutMs":10000}'
-java -jar @fxdriver.skill.jar@ rpc <port> setText '{"nodeId":"filter-duplicates","value":"portrait"}'
-java -jar @fxdriver.skill.jar@ rpc <port> selectListItem '{"nodeId":"duplicates-list","itemText":"portrait"}'
-java -jar @fxdriver.skill.jar@ rpc <port> key '{"nodeId":"filter-duplicates","key":"ENTER"}'
-java -jar @fxdriver.skill.jar@ rpc <port> fireMenuItem '{"nodeId":"main-menu","path":["File","Save"]}'
-java -jar @fxdriver.skill.jar@ rpc <port> tableCell '{"nodeId":"projects","tableText":"MDP_40982497","column":"Projektnummer"}'
-```
-
-`key` is synthetic JavaFX input, not OS/global input. Menu firing resolves and
-fires the model item without showing its JavaFX popup. `tableCell` reads model
-values from flat columns. There is no generic `select`; choose the explicit
-selection method for the control.
-
-## Wait/assert
-
-After action, wait for observable state:
-
-```sh
-java -jar @fxdriver.skill.jar@ rpc <port> wait '{"text":"portrait","timeoutMs":30000}'
-java -jar @fxdriver.skill.jar@ rpc <port> assert '{"textExact":"Keep duplicates","present":true}'
-```
-
-Do not assume immediate UI update after action.
-
-If a wait fails, read the returned `ok:false`/`TIMEOUT` and its at-most-five
-`nearMatches`, then take a fresh summary or full snapshot if needed. Near-match
-ids/text/types help diagnose a typo; their selector paths are not selectors.
-
-## Visual review
-
-When task mentions colors, layout, overflow, visual quality, screenshots are
-mandatory:
-
-```sh
-java -jar @fxdriver.skill.jar@ screenshot <port> target/before.png
-# act/change app
-java -jar @fxdriver.skill.jar@ screenshot <port> target/after.png
-java -jar @fxdriver.skill.jar@ image-diff target/before.png target/after.png target/diff.png
-```
-
-Read screenshots. Diff alone tells change amount, not quality. Screenshot JSON
-also identifies `activeWindow` and provides a bounded `visibleTextSample` for
-orientation; it is not a replacement for reading the image.
-
-## Video evidence
-
-Video RPCs are not available in this phase. Check `capabilities`; use repeated
-screenshots when still-image evidence is sufficient. Modal-safe asynchronous
-action dispatch is also outside this phase.
-
-## Failure artifacts
-
-On failure, collect:
-
-```sh
-java -jar @fxdriver.skill.jar@ rpc <port> snapshot '{}' > target/failure-snapshot.json
-java -jar @fxdriver.skill.jar@ screenshot <port> target/failure.png > target/failure-summary.json
-java -jar @fxdriver.skill.jar@ rpc <port> events '{"clear":true}' > target/failure-events.json
-```
-
-Then inspect app logs separately.
-
-## Clean up
-
-```sh
-java -jar @fxdriver.skill.jar@ rpc <port> shutdown '{}'
-```
-
-This stops only fxdriver RPC server. Kill the app process separately if the run
-launched it.
+- Stop at first unexpected failure.
+- On timeout, query actual windows/state before retrying: modal action may have completed.
+  Reconcile observed `actionId` status after modal closure; `pending`, `cancelling` and `unknown` are not terminal success.
+  Client-side request overlap alone is not a modal workaround.
+- Inspect enabled state, selected indices and semantic values explicitly.
+- Capture the observed dialog window ID; verify returned `activeWindow` and dimensions.
+  Use a dialog-node crop only as a fallback.
+- Preserve bounded driver replies and app logs; redact credential-bearing params.
+- Use supported shutdown for launched test instances and verify process exit.
+  Use normal app UI when required by its shutdown workflow; do not infer lifecycle behavior from a stale artifact.
+- Never kill an attached user-owned app as generic cleanup.

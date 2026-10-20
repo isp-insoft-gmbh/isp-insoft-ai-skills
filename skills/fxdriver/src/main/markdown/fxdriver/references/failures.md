@@ -1,118 +1,89 @@
 # fxdriver failure examples
 
-These examples are based on integration tests that intentionally drive the
-probe app into failed or ambiguous states. Keep the pattern: observe the exact
-tool result, gather the next artifact, then change one thing.
+Use [runtime preflight](runtime.md) for executable/JAR paths and placeholders.
+These patterns are exercised by intentional integration failures, not permission to repeat uncertain mutations.
+Observe the exact reply, gather the missing evidence, then change one thing.
 
 ## Wait timed out
 
-Observed result:
-
-```json
-{
-  "result": {
-    "query": "text=Probe buton",
-    "present": true,
-    "count": 0,
-    "ok": false,
-    "error": { "code": "TIMEOUT", "message": "Wait predicate not satisfied" }
-  }
-}
-```
-
-Useful recovery:
-
-1. Do not retry the same typo.
-2. Run `snapshot` or CLI `snapshot --summary`.
-3. Compare visible text and control ids, then retry with the corrected selector.
-
-Verified recovery signal: a full snapshot after the timeout contained
-`Probe button`.
-
-## Input payload was wrong
-
-Observed command:
-
-```sh
-java -jar fxdriver.jar rpc <port> setText '{"nodeId":"probe-field","text":"wrong field"}'
-```
-
-Observed result included:
+A ready fixture queried with `text:"Refresh toolbr"` returns `ok:false`, `TIMEOUT`, observation metadata and bounded near matches including `Refresh toolbar`.
+A corrected selector or targeted query resolves the actual control.
+If the FX thread never executed a probe before deadline, `observed:false`, `count:-1` and empty near matches are honest missing evidence, not proven absence.
+First establish app readiness separately from endpoint readiness.
 
 ```text
-setText/type require value
+<driver-java> -jar <driver-jar> rpc <endpoint-json> wait '{"nodeId":"project-filter","timeoutMs":10000}'
+<driver-java> -jar <driver-jar> rpc <endpoint-json> query '{"role":"BUTTON","text":"Refresh"}'
 ```
 
-Useful recovery: for `setText` and `type`, put the input in `value`. `text` is a
-selector field.
+## Wrong input field
 
-```sh
-java -jar fxdriver.jar rpc <port> setText '{"nodeId":"probe-field","value":"right field"}'
+`setText`/`type` require `value`; `text` selects a node.
+A request containing only `text:"wrong field"` is rejected rather than inserting that selector text.
+
+```text
+<driver-java> -jar <driver-jar> rpc <endpoint-json> setText '{"nodeId":"project-filter","value":"right field"}'
 ```
 
-## Wrong primitive for a choice control
+## Wrong primitive or uncommitted editor
 
-Observed behavior:
+A click dispatch can succeed without selecting the intended choice or opening the intended application view.
+Use converter-aware `setValue` or explicit `selectIndex`, then verify actual `displayValue`/selection.
+For editable combo/date/spinner controls, editor text and model value are distinct until `commit`.
+Duplicate displayed choices are rejected rather than choosing the first matching domain object.
 
-1. `click {"nodeId":"probe-choice"}` returned `ok:true`.
-2. `wait {"text":"blue"}` still timed out.
-3. `setValue {"nodeId":"probe-choice","value":"blue"}` returned `ok:true`.
-4. `wait {"text":"blue"}` then passed.
-
-Useful recovery: `ok:true` on an action means the primitive ran, not that the
-intended state changed. For choice-like controls, prefer `setValue` or
-`selectIndex`, then wait/assert the resulting value.
-
-## Useful control has no id
-
-Observed snapshot fragment:
-
-```json
-{
-  "type": "Button",
-  "id": "",
-  "nodeId": "",
-  "text": "Tool action",
-  "actionable": true
-}
+```text
+<driver-java> -jar <driver-jar> rpc <endpoint-json> setValue '{"nodeId":"domain-choice","value":"Beta"}'
+<driver-java> -jar <driver-jar> rpc <endpoint-json> assert '{"nodeId":"domain-choice","displayValue":"Beta"}'
 ```
 
-Useful recovery:
+## No stable ID or multiple candidates
 
-1. If this is a one-off run, target by exact text or role plus text and verify
-   with `highlight`.
-2. If this flow will be repeated, ask permission to add a minimal semantic
-   JavaFX id such as `tool-action`.
-3. Add only ids that describe user intent, follow local style, and leave them in
-   the app for future navigation.
+An ID-less custom Region can expose its name through accessible `TEXT` and nominate a `FIRE` candidate through its role.
+Discover by role/name and verify the resulting state; roles do not prove handler support.
+Exact text can also match skin nodes, and IDs can be duplicated.
+Refine with role/window scope or a fresh observed `eid` instead of selecting the first plausible match.
+Improve source IDs/labels only within authorized scope.
 
-## Visual change needs image evidence
+## Dispatch exception after a partial effect
 
-Verified sequence:
+The accessible-action fixture increments its counter and then throws.
+The driver reports failure, does not retry through synthetic mouse input, and default `run` stops before later steps.
+Inspect actual counters/UI state before considering any further mutation.
+A failed callback is not a rollback guarantee.
 
-```sh
-java -jar fxdriver.jar rpc <port> screenshot '{"path":"/abs/before.png"}'
-java -jar fxdriver.jar rpc <port> click '{"textExact":"charlie"}'
-java -jar fxdriver.jar rpc <port> wait '{"text":"clicked charlie","timeoutMs":2000}'
-java -jar fxdriver.jar rpc <port> screenshot '{"path":"/abs/after.png"}'
-java -jar fxdriver.jar image-diff /abs/before.png /abs/after.png /abs/diff.png
+## Modal work and cleanup
+
+A dialog opener may return `pending` with `actionId`.
+Drive the observed dialog, then inspect `actionStatus` and verify domain completion.
+`cancelling` can mean the action body never started but its setup/cleanup is still active.
+Late setup, cleanup or modal-unwind failure must not be treated as an earlier successful callback.
+`RECONCILIATION_TIMEOUT` blocks later batch dispatch even when `continueOnError` permits ordinary known failures.
+
+## Protected values
+
+Password and marked/revealed inputs return `[redacted]`, not real content, length or selection offsets.
+Use `sensitive:true` with an expected-value assertion when authorized verification is needed.
+Native/custom secret controls must not leak through action echoes, events, help/name metadata or screenshot pixels.
+Do not store raw secret client requests in the evidence log.
+
+## Visual evidence
+
+```text
+<driver-java> -jar <driver-jar> rpc <endpoint-json> screenshot '{"path":"<temp-dir>/before.png"}'
+<driver-java> -jar <driver-jar> rpc <endpoint-json> fire '{"role":"BUTTON","textExact":"Open"}'
+<driver-java> -jar <driver-jar> rpc <endpoint-json> wait '{"nodeId":"details","present":true,"timeoutMs":2000}'
+<driver-java> -jar <driver-jar> rpc <endpoint-json> screenshot '{"path":"<temp-dir>/after.png"}'
+<driver-java> -jar <driver-jar> image-diff <temp-dir>/before.png <temp-dir>/after.png <temp-dir>/diff.png
 ```
 
-The screenshot RPC returned image metadata with `source`, and the files existed.
-`image-diff` returned `changedPixels` and wrote the diff PNG.
+Read actual images; a file existing, image hash or changed-pixel count does not establish visual correctness.
+JavaFX scene snapshots do not include unrelated desktop occlusion or native dialogs.
+Inspect backend logs too: the driver-free geometry comparison produced blit failures while its process still exited 0.
 
-Useful recovery: read the screenshots. The diff proves where pixels changed,
-not whether the UI is correct.
+## Event trail
 
-## Use events as a trail
-
-Observed events included method names, params, and `ok` values:
-
-```json
-{"method":"wait","ok":false,"params":{"text":"Probe buton","timeoutMs":250}}
-{"method":"setText","ok":false,"params":{"nodeId":"probe-field","text":"wrong field"}}
-```
-
-Useful recovery: use `events {"clear":true}` at failure boundaries to preserve a
-short trail of what the agent actually tried. Treat `ok:false` entries as the
-first questions to explain.
+Events preserve immediate request outcomes with redacted parameters, monotonic sequence cursors and overflow metadata.
+They do not turn a pending request into completed application work.
+Read `events` or `eventsSince`, preserve the bounded redacted reply, then call `clearEvents` explicitly.
+The undocumented `events {"clear":true}` flag is not supported.

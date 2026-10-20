@@ -329,14 +329,7 @@ final class FxDriverBenchmarkIT {
     }
 
     private static String testClasspath() {
-        final var separator = System.getProperty("path.separator");
-        return Path.of("target", "test-classes") + separator + Path.of("target", "classes");
-    }
-
-    private static String javafxModules() {
-        return ModuleLayer.boot().findModule("jdk.jsobject").isPresent()
-                ? "javafx.controls,javafx.web"
-                : "javafx.controls,javafx.web,jdk.jsobject";
+        return Path.of("target", "test-classes").toString();
     }
 
     private static String javafxModulePath() {

@@ -43,9 +43,19 @@ final class FxDriverTestHarness {
                         .redirectOutput(out.resolve("launch.out").toFile())
                         .redirectError(out.resolve("launch.err").toFile())
                         .start();
-        final var endpoint = awaitEndpoint(out.resolve("launch.out"));
-        assertPureEndpointOutput(out.resolve("launch.out"));
-        return new Session(process, endpoint, out);
+        try {
+            final var endpoint = awaitEndpoint(out.resolve("launch.out"));
+            assertPureEndpointOutput(out.resolve("launch.out"));
+            return new Session(process, endpoint, out);
+        } catch (final Exception | Error failure) {
+            try {
+                destroy(process);
+            } catch (final InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                failure.addSuppressed(interrupted);
+            }
+            throw failure;
+        }
     }
 
     static Process startDirect(final Class<?> application, final Path out, final String... args)
@@ -75,7 +85,7 @@ final class FxDriverTestHarness {
     }
 
     static Path artifacts(final String name) throws IOException {
-        final var out = Path.of("target", name);
+        final var out = Path.of("target", name).toAbsolutePath().normalize();
         Files.createDirectories(out);
         return out;
     }
@@ -85,14 +95,11 @@ final class FxDriverTestHarness {
         final var command = new ArrayList<String>();
         command.add(java());
         addProbeJvmArgs(command);
-        command.add("--enable-native-access=javafx.graphics");
-        if (Runtime.version().feature() >= 24) {
-            command.add("--sun-misc-unsafe-memory-access=allow");
-        }
+        command.add("--enable-native-access=javafx.graphics,javafx.web");
         command.add("--module-path");
         command.add(javafxModulePath());
         command.add("--add-modules");
-        command.add(javafxModules());
+        command.add("javafx.controls,javafx.web");
         command.add("-cp");
         command.add(testClasspath());
         command.add(application.getName());
@@ -222,14 +229,7 @@ final class FxDriverTestHarness {
     }
 
     private static String testClasspath() {
-        final var separator = System.getProperty("path.separator");
-        return Path.of("target", "test-classes") + separator + Path.of("target", "classes");
-    }
-
-    private static String javafxModules() {
-        return ModuleLayer.boot().findModule("jdk.jsobject").isPresent()
-                ? "javafx.controls,javafx.web"
-                : "javafx.controls,javafx.web,jdk.jsobject";
+        return Path.of("target", "test-classes").toString();
     }
 
     private static String javafxModulePath() {

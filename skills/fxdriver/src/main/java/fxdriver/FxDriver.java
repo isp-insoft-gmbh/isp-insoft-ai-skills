@@ -14,6 +14,8 @@ import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HexFormat;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
@@ -72,6 +74,7 @@ public final class FxDriver {
 
         final var endpoint = waitForEndpoint(endpointFile, Duration.ofSeconds(10));
         waitForRpc(endpoint.port(), endpoint.token(), Duration.ofSeconds(10));
+        verifyAgentArtifact(endpoint, agent);
         printEndpoint(
                 "attached pid=" + pid,
                 endpoint,
@@ -137,6 +140,7 @@ public final class FxDriver {
         try {
             final var endpoint = waitForEndpoint(endpointFile, Duration.ofSeconds(10));
             waitForRpc(endpoint.port(), endpoint.token(), Duration.ofSeconds(10));
+            verifyAgentArtifact(endpoint, agent);
             final var startupMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
             printEndpoint(
                     "launched pid=" + process.pid() + " startupMs=" + startupMs + " mode=javaagent",
@@ -174,11 +178,8 @@ public final class FxDriver {
         } catch (final Exception exception) {
             throw new IOException("cannot locate fxdriver jar", exception);
         }
-        final var dev = Path.of("target", "fxdriver.jar").toAbsolutePath();
-        if (Files.isRegularFile(dev)) {
-            return dev;
-        }
-        throw new IOException("cannot locate fxdriver jar; run mvn package");
+        throw new IOException(
+                "Run fxdriver from its packaged JAR; no cwd or checkout artifact is substituted");
     }
 
     private static boolean isJavaCommand(final String command) {
@@ -274,13 +275,30 @@ public final class FxDriver {
         throw new IOException("fxdriver endpoint file was not written: " + file);
     }
 
+    private static void verifyAgentArtifact(final Endpoint endpoint, final Path agent)
+            throws Exception {
+        final var reply =
+                RpcReply.parse(rpcBody(endpoint.port(), endpoint.token(), "version", "{}"));
+        final var expected = AgentArtifact.checksum(agent);
+        if (reply.failed()
+                || !(reply.result() instanceof Map<?, ?> result)
+                || !expected.equals(result.get("agentSha256"))) {
+            throw new IOException(
+                    "Running agent does not attest the selected JAR: "
+                            + agent
+                            + ". No GUI action dispatched. Restart the target only if owned or"
+                            + " explicitly authorized.");
+        }
+    }
+
     private static void waitForRpc(final int port, final String token, final Duration timeout)
             throws Exception {
         final var deadline = System.nanoTime() + timeout.toNanos();
         Exception last = null;
         while (System.nanoTime() < deadline) {
             try {
-                rpcBody(port, token, "ping", "{}");
+                final var reply = RpcReply.parse(rpcBody(port, token, "ping", "{}"));
+                if (reply.failed()) throw new IOException("fxdriver ping was rejected");
                 return;
             } catch (final Exception exception) {
                 last = exception;
@@ -296,22 +314,32 @@ public final class FxDriver {
             final Path agent,
             final long pid,
             final long startupMs,
-            final boolean machineJson) {
-        System.out.println(endpointJson(endpoint, pid, startupMs));
+            final boolean machineJson)
+            throws IOException {
+        System.out.println(endpointJson(endpoint, pid, startupMs, agent));
         if (machineJson) {
             return;
         }
         System.out.printf(
-                "fxdriver %s rpc=http://127.0.0.1:%d/rpc token=%s endpoint=%s%n",
-                label, endpoint.port(), endpoint.token(), endpoint.file());
-        System.out.printf("export FXDRIVER_TOKEN=%s%n", endpoint.token());
-        System.out.printf(
-                "try: java -jar %s rpc %d highlight '{\"selector\":\"Button\"}'%n",
-                agent.getFileName(), endpoint.port());
+                "fxdriver %s rpc=http://127.0.0.1:%d/rpc endpoint=%s%n",
+                label, endpoint.port(), endpoint.file());
+        System.out.println("Endpoint file contains credentials; keep it private.");
+        System.out.println(
+                "Next RPC argv: "
+                        + Json.stringify(
+                                List.of(
+                                        ProcessHandle.current().info().command().orElseThrow(),
+                                        "-jar",
+                                        agent.toAbsolutePath().toString(),
+                                        "rpc",
+                                        endpoint.file().toAbsolutePath().toString(),
+                                        "snapshotSummary",
+                                        "{}")));
     }
 
     private static String endpointJson(
-            final Endpoint endpoint, final long pid, final long startupMs) {
+            final Endpoint endpoint, final long pid, final long startupMs, final Path agent)
+            throws IOException {
         return "{\"pid\":"
                 + pid
                 + ",\"port\":"
@@ -324,7 +352,11 @@ public final class FxDriver {
                 + jsonEscape(endpoint.file().toString())
                 + "\",\"startupMs\":"
                 + startupMs
-                + "}";
+                + ",\"agentJar\":\""
+                + jsonEscape(agent.toRealPath().toString())
+                + "\",\"agentSha256\":\""
+                + AgentArtifact.checksum(agent)
+                + "\"}";
     }
 
     private static void rpc(final String... args) throws Exception {
@@ -341,7 +373,7 @@ public final class FxDriver {
                         args[2],
                         args.length >= 4 ? args[3] : "{}");
         System.out.println(body);
-        if (Json.hasTopLevelKey(body, "error")) {
+        if (RpcReply.parse(body).failed()) {
             System.exit(1);
         }
     }
@@ -370,7 +402,7 @@ public final class FxDriver {
                         summary ? "snapshotSummary" : "snapshot",
                         "{}");
         System.out.println(body);
-        if (Json.hasTopLevelKey(body, "error")) {
+        if (RpcReply.parse(body).failed()) {
             System.exit(1);
         }
     }
@@ -393,7 +425,7 @@ public final class FxDriver {
                         tokenArg(args, 3),
                         "screenshot",
                         "{\"path\":\"" + jsonEscape(path.toString()) + "\"}");
-        if (Json.hasTopLevelKey(response, "error")) {
+        if (RpcReply.parse(response).failed()) {
             System.out.println(response);
             System.exit(1);
         }
@@ -455,12 +487,13 @@ public final class FxDriver {
             builder.header("fxdriver-token", token);
         }
         final var request = builder.POST(HttpRequest.BodyPublishers.ofString(body)).build();
-        final var response =
-                HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() / 100 != 2) {
-            throw new IOException("HTTP " + response.statusCode() + ": " + response.body());
+        try (final var client = HttpClient.newHttpClient()) {
+            final var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() / 100 != 2) {
+                throw new IOException("HTTP " + response.statusCode() + ": " + response.body());
+            }
+            return response.body();
         }
-        return response.body();
     }
 
     static String imageSummaryJson(final Path requestedPath) throws IOException {

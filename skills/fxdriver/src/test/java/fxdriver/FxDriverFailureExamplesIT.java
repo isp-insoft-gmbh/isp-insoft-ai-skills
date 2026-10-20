@@ -25,6 +25,9 @@ final class FxDriverFailureExamplesIT {
         final var process = startProbe(out);
         try {
             final var endpoint = waitForEndpoint(out.resolve("launch.out"));
+            final var ready =
+                    rpc(endpoint, "wait", "{\"nodeId\":\"project-filter\",\"timeoutMs\":10000}");
+            assertTrue(ready.contains("\"ok\":true"), ready);
 
             final var typoWait =
                     rpc(endpoint, "wait", "{\"text\":\"Refresh toolbr\",\"timeoutMs\":250}");
@@ -77,7 +80,8 @@ final class FxDriverFailureExamplesIT {
             assertTrue(
                     rpc(endpoint, "scrollToIndex", "{\"nodeId\":\"recent-projects\",\"index\":2}")
                             .contains("\"ok\":true"));
-            final var listClick = rpc(endpoint, "click", "{\"textExact\":\"Cygnus\"}");
+            final var listClick =
+                    rpc(endpoint, "click", "{\"role\":\"BUTTON\",\"textExact\":\"Cygnus\"}");
             assertTrue(listClick.contains("\"ok\":true"), listClick);
             assertTrue(
                     rpc(endpoint, "wait", "{\"text\":\"Opened Cygnus\",\"timeoutMs\":2000}")
@@ -186,14 +190,7 @@ final class FxDriverFailureExamplesIT {
     }
 
     private static String testClasspath() {
-        final var separator = System.getProperty("path.separator");
-        return Path.of("target", "test-classes") + separator + Path.of("target", "classes");
-    }
-
-    private static String javafxModules() {
-        return ModuleLayer.boot().findModule("jdk.jsobject").isPresent()
-                ? "javafx.controls,javafx.web"
-                : "javafx.controls,javafx.web,jdk.jsobject";
+        return Path.of("target", "test-classes").toString();
     }
 
     private static String javafxModulePath() {

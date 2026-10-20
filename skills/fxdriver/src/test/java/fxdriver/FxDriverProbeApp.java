@@ -237,46 +237,49 @@ public final class FxDriverProbeApp extends Application {
         primaryStage.setTitle("fxdriver probe primary");
         final var scene =
                 new Scene(
-                        new VBox(
-                                8,
-                                primaryButton,
-                                duplicateActions,
-                                escapedButton,
-                                unstable,
-                                unstableState,
-                                field,
-                                toggle,
-                                checkBox,
-                                radioA,
-                                radioB,
-                                password,
-                                area,
-                                list,
-                                tree,
-                                table,
-                                treeTable,
-                                choice,
-                                combo,
-                                date,
-                                color,
-                                spinner,
-                                slider,
-                                scrollBar,
-                                tabs,
-                                accordion,
-                                pagination,
-                                split,
-                                scrollPane,
-                                toolBar,
-                                webView,
-                                subScene),
+                        new ScrollPane(
+                                new VBox(
+                                        8,
+                                        primaryButton,
+                                        duplicateActions,
+                                        escapedButton,
+                                        unstable,
+                                        unstableState,
+                                        field,
+                                        toggle,
+                                        checkBox,
+                                        radioA,
+                                        radioB,
+                                        password,
+                                        area,
+                                        list,
+                                        tree,
+                                        table,
+                                        treeTable,
+                                        choice,
+                                        combo,
+                                        date,
+                                        color,
+                                        spinner,
+                                        slider,
+                                        scrollBar,
+                                        tabs,
+                                        accordion,
+                                        pagination,
+                                        split,
+                                        scrollPane,
+                                        toolBar,
+                                        webView,
+                                        subScene)),
                         620,
-                        1220);
+                        800);
         scene.getAccelerators()
                 .put(
                         KeyCombination.keyCombination("F1"),
                         () -> primaryButton.setText("F1 pressed"));
         primaryStage.setScene(scene);
+        primaryStage.setX(20);
+        primaryStage.setY(20);
         primaryStage.show();
 
         final var secondary = new Stage();
@@ -284,8 +287,8 @@ public final class FxDriverProbeApp extends Application {
         secondaryButton.setId("probe-secondary-button");
         secondary.setTitle("fxdriver probe secondary");
         secondary.setScene(new Scene(new VBox(secondaryButton), 260, 120));
-        secondary.setX(primaryStage.getX() + 390);
-        secondary.setY(primaryStage.getY());
+        secondary.setX(700);
+        secondary.setY(20);
         secondary.show();
 
         final var popup = new Popup();

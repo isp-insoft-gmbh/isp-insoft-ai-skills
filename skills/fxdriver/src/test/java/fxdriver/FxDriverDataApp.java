@@ -226,7 +226,7 @@ public final class FxDriverDataApp extends Application {
         content.setDividerPositions(0.26);
         final var footer = new VBox(8, new HBox(8, pages, refreshState), details, status);
         final var root = new BorderPane(content, toolbar, null, footer, null);
-        final var scene = new Scene(root, 1040, 760);
+        final var scene = new Scene(root, 960, 760);
         scene.getStylesheets()
                 .add(
                         Objects.requireNonNull(

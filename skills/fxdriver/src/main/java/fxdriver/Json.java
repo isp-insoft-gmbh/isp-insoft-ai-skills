@@ -1,8 +1,12 @@
 package fxdriver;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 final class Json {
     private Json() {}
@@ -247,10 +251,115 @@ final class Json {
     }
 
     static String escape(final String value) {
-        return value.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r");
+        final var out = new StringBuilder();
+        appendString(out, value);
+        return out.substring(1, out.length() - 1);
+    }
+
+    static Object parse(final String json) {
+        final var parser = new Parser(Objects.requireNonNull(json));
+        final var value = parser.value();
+        parser.whitespace();
+        if (!parser.done()) {
+            throw parser.error("trailing input");
+        }
+        return value;
+    }
+
+    static Map<String, Object> object(final String json) {
+        final var value = parse(json);
+        if (value instanceof Map<?, ?> map) {
+            @SuppressWarnings("unchecked")
+            final var object = (Map<String, Object>) map;
+            return object;
+        }
+        throw new IllegalArgumentException("JSON value is not an object");
+    }
+
+    static String stringify(final Object value) {
+        final var out = new StringBuilder();
+        appendJson(out, value);
+        return out.toString();
+    }
+
+    private static void appendJson(final StringBuilder out, final Object value) {
+        switch (value) {
+            case null -> out.append("null");
+            case String string -> appendString(out, string);
+            case Boolean bool -> out.append(bool);
+            case Byte _, Short _, Integer _, Long _, BigDecimal _ -> out.append(value);
+            case Float number -> appendFiniteNumber(out, number.doubleValue());
+            case Double number -> appendFiniteNumber(out, number);
+            case Map<?, ?> map -> {
+                out.append('{');
+                var first = true;
+                for (final var entry : map.entrySet()) {
+                    if (!(entry.getKey() instanceof String key)) {
+                        throw new IllegalArgumentException("JSON object key is not a string");
+                    }
+                    if (!first) {
+                        out.append(',');
+                    }
+                    appendString(out, key);
+                    out.append(':');
+                    appendJson(out, entry.getValue());
+                    first = false;
+                }
+                out.append('}');
+            }
+            case Iterable<?> values -> {
+                out.append('[');
+                var first = true;
+                for (final var item : values) {
+                    if (!first) {
+                        out.append(',');
+                    }
+                    appendJson(out, item);
+                    first = false;
+                }
+                out.append(']');
+            }
+            default ->
+                    throw new IllegalArgumentException(
+                            "unsupported JSON value: " + value.getClass());
+        }
+    }
+
+    private static void appendFiniteNumber(final StringBuilder out, final double value) {
+        if (!Double.isFinite(value)) {
+            throw new IllegalArgumentException("JSON number is not finite");
+        }
+        out.append(value);
+    }
+
+    private static void appendString(final StringBuilder out, final String value) {
+        out.append('"');
+        for (var i = 0; i < value.length(); i++) {
+            final var c = value.charAt(i);
+            switch (c) {
+                case '"' -> out.append("\\\"");
+                case '\\' -> out.append("\\\\");
+                case '\b' -> out.append("\\b");
+                case '\f' -> out.append("\\f");
+                case '\n' -> out.append("\\n");
+                case '\r' -> out.append("\\r");
+                case '\t' -> out.append("\\t");
+                default -> {
+                    if (c < 0x20
+                            || (Character.isHighSurrogate(c)
+                                    && (i + 1 >= value.length()
+                                            || !Character.isLowSurrogate(value.charAt(i + 1))))
+                            || (Character.isLowSurrogate(c)
+                                    && (i == 0
+                                            || !Character.isHighSurrogate(value.charAt(i - 1))))) {
+                        out.append("\\u%04x".formatted((int) c));
+                    } else {
+                        out.append(c);
+                    }
+                }
+            }
+        }
+        out.append('"');
     }
 
     private static int fieldColon(final String body, final String key) {
@@ -317,5 +426,220 @@ final class Json {
             }
         }
         return out.toString();
+    }
+
+    private static final class Parser {
+        private final String source;
+        private int index;
+        private int depth;
+
+        Parser(final String source) {
+            this.source = source;
+        }
+
+        Object value() {
+            if (++depth > 128) throw error("maximum nesting depth exceeded");
+            try {
+                whitespace();
+                if (done()) throw error("expected value");
+                return switch (source.charAt(index)) {
+                    case '{' -> object();
+                    case '[' -> array();
+                    case '"' -> string();
+                    case 't' -> literal("true", Boolean.TRUE);
+                    case 'f' -> literal("false", Boolean.FALSE);
+                    case 'n' -> literal("null", null);
+                    default -> number();
+                };
+            } finally {
+                depth--;
+            }
+        }
+
+        private Map<String, Object> object() {
+            final var object = new LinkedHashMap<String, Object>();
+            index++;
+            whitespace();
+            if (consume('}')) {
+                return object;
+            }
+            while (true) {
+                whitespace();
+                if (!consume('"')) {
+                    throw error("expected object key");
+                }
+                index--;
+                final var key = string();
+                whitespace();
+                expect(':');
+                final var value = value();
+                if (object.containsKey(key)) {
+                    throw error("duplicate object key: " + key);
+                }
+                object.put(key, value);
+                whitespace();
+                if (consume('}')) {
+                    return object;
+                }
+                expect(',');
+            }
+        }
+
+        private List<Object> array() {
+            final var values = new ArrayList<>();
+            index++;
+            whitespace();
+            if (consume(']')) {
+                return values;
+            }
+            while (true) {
+                values.add(value());
+                whitespace();
+                if (consume(']')) {
+                    return values;
+                }
+                expect(',');
+            }
+        }
+
+        private String string() {
+            expect('"');
+            final var out = new StringBuilder();
+            while (!done()) {
+                final var c = source.charAt(index++);
+                if (c == '"') {
+                    return out.toString();
+                }
+                if (c < 0x20) {
+                    throw error("unescaped control character");
+                }
+                if (c != '\\') {
+                    out.append(c);
+                    continue;
+                }
+                if (done()) {
+                    throw error("unfinished escape");
+                }
+                switch (source.charAt(index++)) {
+                    case '"' -> out.append('"');
+                    case '\\' -> out.append('\\');
+                    case '/' -> out.append('/');
+                    case 'b' -> out.append('\b');
+                    case 'f' -> out.append('\f');
+                    case 'n' -> out.append('\n');
+                    case 'r' -> out.append('\r');
+                    case 't' -> out.append('\t');
+                    case 'u' -> out.append(unicode());
+                    default -> throw error("invalid escape");
+                }
+            }
+            throw error("unterminated string");
+        }
+
+        private char unicode() {
+            if (index + 4 > source.length()) {
+                throw error("unfinished unicode escape");
+            }
+            final var digits = source.substring(index, index + 4);
+            if (!digits.chars()
+                    .allMatch(
+                            c ->
+                                    c >= '0' && c <= '9'
+                                            || c >= 'a' && c <= 'f'
+                                            || c >= 'A' && c <= 'F')) {
+                throw error("invalid unicode escape");
+            }
+            try {
+                final var value = (char) Integer.parseInt(digits, 16);
+                index += 4;
+                return value;
+            } catch (final NumberFormatException exception) {
+                throw error("invalid unicode escape");
+            }
+        }
+
+        private Object literal(final String literal, final Object value) {
+            if (!source.startsWith(literal, index)) {
+                throw error("invalid literal");
+            }
+            index += literal.length();
+            return value;
+        }
+
+        private Number number() {
+            final var start = index;
+            consume('-');
+            if (consume('0')) {
+                if (!done() && digit(source.charAt(index))) {
+                    throw error("leading zero");
+                }
+            } else {
+                digits();
+            }
+            if (consume('.')) {
+                digits();
+            }
+            if (consume('e') || consume('E')) {
+                if (!consume('+')) {
+                    consume('-');
+                }
+                digits();
+            }
+            final var text = source.substring(start, index);
+            try {
+                if (!text.contains(".") && !text.contains("e") && !text.contains("E")) {
+                    try {
+                        return Long.valueOf(text);
+                    } catch (final NumberFormatException exception) {
+                        return new BigDecimal(text);
+                    }
+                }
+                return new BigDecimal(text);
+            } catch (final NumberFormatException exception) {
+                throw error("invalid number");
+            }
+        }
+
+        private void digits() {
+            final var start = index;
+            while (!done() && digit(source.charAt(index))) {
+                index++;
+            }
+            if (index == start) {
+                throw error("expected digit");
+            }
+        }
+
+        private static boolean digit(final char value) {
+            return value >= '0' && value <= '9';
+        }
+
+        private void whitespace() {
+            while (!done() && " \n\r\t".indexOf(source.charAt(index)) >= 0) {
+                index++;
+            }
+        }
+
+        private boolean consume(final char expected) {
+            if (!done() && source.charAt(index) == expected) {
+                index++;
+                return true;
+            }
+            return false;
+        }
+
+        private void expect(final char expected) {
+            if (!consume(expected)) {
+                throw error("expected '" + expected + "'");
+            }
+        }
+
+        private boolean done() {
+            return index == source.length();
+        }
+
+        IllegalArgumentException error(final String message) {
+            return new IllegalArgumentException(message + " at JSON offset " + index);
+        }
     }
 }

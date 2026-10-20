@@ -1,28 +1,33 @@
-# Duplicate review flow
+# Duplicate review example
 
-Example sequence from the original duplicate-review app spike. Treat it as a
-recipe, not a script.
+Complete [runtime preflight](../references/runtime.md); use the installed JAR and resolved real Java executables.
 
-```sh
-./mvnw -q package
-java -jar @fxdriver.skill.jar@ attach <pid>
-export FXDRIVER_TOKEN=<printed-token>
-java -jar @fxdriver.skill.jar@ rpc <printed-port> ping '{}'
-java -jar @fxdriver.skill.jar@ screenshot \
-  <printed-port> target/dup-before.png > target/dup-before-summary.json
-java -jar @fxdriver.skill.jar@ rpc <printed-port> click '{"nodeId":"find-duplicates"}'
-java -jar @fxdriver.skill.jar@ rpc <printed-port> wait '{"text":"portrait","timeoutMs":30000}'
-java -jar @fxdriver.skill.jar@ rpc <printed-port> setText '{"nodeId":"filter-duplicates","value":"portrait"}'
-java -jar @fxdriver.skill.jar@ rpc <printed-port> selectListItem '{"nodeId":"duplicates-list","itemText":"portrait"}'
-java -jar @fxdriver.skill.jar@ rpc <printed-port> assert '{"textExact":"Keep duplicates","present":true}'
-java -jar @fxdriver.skill.jar@ screenshot \
-  <printed-port> target/dup-detail.png > target/dup-detail-summary.json
-java -jar @fxdriver.skill.jar@ rpc <printed-port> click '{"textExact":"Keep duplicates"}'
-java -jar @fxdriver.skill.jar@ rpc <printed-port> assert '{"text":"Kept duplicates","present":true}'
-java -jar @fxdriver.skill.jar@ screenshot \
-  <printed-port> target/dup-after.png > target/dup-after-summary.json
-java -jar @fxdriver.skill.jar@ image-diff \
-  target/dup-before.png target/dup-after.png target/dup-diff.png \
-  > target/dup-diff.json
-java -jar @fxdriver.skill.jar@ rpc <printed-port> events '{}' > target/dup-events.json
+Use isolated data; reviewing duplicates is not permission to delete them.
+Discover actual names, methods and IDs before using this app-specific plan.
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "run",
+  "params": {
+    "steps": [
+      { "op": "click", "nodeId": "find-duplicates" },
+      {
+        "op": "wait",
+        "nodeId": "filter-duplicates",
+        "enabled": true,
+        "timeoutMs": 10000
+      },
+      { "op": "setText", "nodeId": "filter-duplicates", "value": "portrait" }
+    ],
+    "returnState": "compact"
+  }
+}
 ```
+
+If Find opens a modal and times out, inspect current windows instead of repeating it.
+Inspect list items and selection semantics before choosing an item; selection can activate controls.
+Capture relevant before/after nodes with absolute OS-temp paths and read the images.
+Verify app completion/readback separately from successful dispatch.
+Keep driver events only after redacting sensitive inputs.

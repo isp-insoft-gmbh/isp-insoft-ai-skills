@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
@@ -26,8 +27,8 @@ final class FxDriverProbeIT {
                     "capabilities",
                     "configure",
                     "shutdown",
-                    "batch",
                     "run",
+                    "actionStatus",
                     "events",
                     "eventsSince",
                     "clearEvents",
@@ -38,14 +39,17 @@ final class FxDriverProbeIT {
                     "query",
                     "press",
                     "key",
+                    "focus",
                     "fire",
                     "fireMenuItem",
                     "tableCell",
+                    "tableColumns",
                     "click",
                     "type",
                     "clear",
                     "setText",
                     "setValue",
+                    "commit",
                     "showPopup",
                     "hidePopup",
                     "increment",
@@ -58,6 +62,8 @@ final class FxDriverProbeIT {
                     "expand",
                     "collapse",
                     "wait",
+                    "waitForLayout",
+                    "waitForQuiet",
                     "assert",
                     "screenshot",
                     "webExecuteScript");
@@ -85,11 +91,24 @@ final class FxDriverProbeIT {
                     "events",
                     "eventsSince",
                     "visual-trace",
-                    "webExecuteScript");
+                    "webExecuteScript",
+                    "editor-commit",
+                    "accessibility-candidates",
+                    "weak-handles",
+                    "modal-actions",
+                    "guarded-targets",
+                    "model-pagination",
+                    "event-redaction",
+                    "sensitive-pixels",
+                    "property-predicates",
+                    "observable-waits",
+                    "layout-pulse",
+                    "artifact-provenance",
+                    "request-validation");
 
     @Test
     void attachToRunningProbeApp() throws Exception {
-        final var out = Path.of("target", "failsafe-attach-probe");
+        final var out = Path.of("target", "failsafe-attach-probe").toAbsolutePath();
         Files.createDirectories(out);
         final var app = startDirectProbe(out);
         try {
@@ -116,7 +135,8 @@ final class FxDriverProbeIT {
                                     endpoint.port(),
                                     endpoint.token(),
                                     "screenshot",
-                                    "{\"path\":\"target/failsafe-attach-probe/window.png\"}")
+                                    Json.stringify(
+                                            Map.of("path", out.resolve("window.png").toString())))
                             .contains("\"scale\":"));
             assertTrue(Files.isRegularFile(out.resolve("window.png")));
             rpc(endpoint.port(), endpoint.token(), "shutdown", "{}");
@@ -128,7 +148,7 @@ final class FxDriverProbeIT {
 
     @Test
     void launchAndDriveProbeApp() throws Exception {
-        final var out = Path.of("target", "failsafe-probe");
+        final var out = Path.of("target", "failsafe-probe").toAbsolutePath();
         Files.createDirectories(out);
         final var process = startProbe(out);
         try {
@@ -324,9 +344,12 @@ final class FxDriverProbeIT {
                             endpoint.port(),
                             endpoint.token(),
                             "screenshot",
-                            "{\"window\":\""
-                                    + secondaryWindow
-                                    + "\",\"path\":\"target/failsafe-probe/secondary.png\"}");
+                            Json.stringify(
+                                    Map.of(
+                                            "window",
+                                            secondaryWindow,
+                                            "path",
+                                            out.resolve("secondary.png").toString())));
             assertTrue(secondaryShot.contains("\"activeWindow\":"), secondaryShot);
             assertTrue(secondaryShot.contains("fxdriver probe secondary"), secondaryShot);
             assertTrue(secondaryShot.contains("Secondary button"), secondaryShot);
@@ -343,10 +366,27 @@ final class FxDriverProbeIT {
                             endpoint.port(),
                             endpoint.token(),
                             "screenshot",
-                            "{\"window\":\""
-                                    + popupWindow
-                                    + "\",\"path\":\"target/failsafe-probe/popup.png\"}");
-            assertTrue(popupShot.contains("unknown screenshot window"), popupShot);
+                            Json.stringify(
+                                    Map.of(
+                                            "window",
+                                            popupWindow,
+                                            "path",
+                                            out.resolve("popup.png").toString())));
+            assertTrue(popupShot.contains("\"wid\":\"" + popupWindow + "\""), popupShot);
+            assertTrue(popupShot.contains("Probe popup"), popupShot);
+            assertTrue(popupShot.contains("\"bytes\":"), popupShot);
+            final var unknownShot =
+                    rpc(
+                            endpoint.port(),
+                            endpoint.token(),
+                            "screenshot",
+                            Json.stringify(
+                                    Map.of(
+                                            "window",
+                                            "w999999",
+                                            "path",
+                                            out.resolve("unknown.png").toString())));
+            assertTrue(unknownShot.contains("unknown screenshot window"), unknownShot);
 
             assertActionTarget(
                     endpoint,
@@ -369,10 +409,17 @@ final class FxDriverProbeIT {
             assertActionTarget(endpoint, "collapse", "{\"nodeId\":\"probe-titled\"}");
 
             final var duplicateClick =
-                    assertActionTarget(endpoint, "click", "{\"textExact\":\"Duplicate action\"}");
+                    rpc(
+                            endpoint.port(),
+                            endpoint.token(),
+                            "click",
+                            "{\"textExact\":\"Duplicate action\"}");
+            assertTrue(duplicateClick.contains("\"ok\":false"), duplicateClick);
+            assertTrue(duplicateClick.contains("AMBIGUOUS"), duplicateClick);
             assertTrue(duplicateClick.contains("\"matches\":9"), duplicateClick);
-            assertTrue(duplicateClick.contains("\"ambiguity\""), duplicateClick);
-            assertEquals(9, occurrences(duplicateClick, "\"selectorPath\""), duplicateClick);
+            assertTrue(duplicateClick.contains("\"candidates\""), duplicateClick);
+            assertEquals(8, occurrences(duplicateClick, "\"selectorPath\""), duplicateClick);
+            assertActionTarget(endpoint, "click", "{\"nodeId\":\"probe-duplicate-0\"}");
 
             final var escaped =
                     assertActionTarget(endpoint, "click", "{\"nodeId\":\"probe-escaped\"}");
@@ -523,22 +570,41 @@ final class FxDriverProbeIT {
             assertTrue(
                     rpc(endpoint.port(), endpoint.token(), "wait", "{\"nodeId\":\"probe-list\"}")
                             .contains("\"ok\":true"));
-            assertTrue(
-                    rpc(endpoint.port(), endpoint.token(), "press", "{\"key\":\"F1\"}")
-                            .contains("\"acceleratorsFired\":1"));
-            assertTrue(
-                    rpc(
+            final var primaryWindow =
+                    nodeWindow(
+                            rpc(
                                     endpoint.port(),
                                     endpoint.token(),
-                                    "assert",
-                                    "{\"textExact\":\"F1 pressed\",\"present\":true}")
-                            .contains("\"ok\":true"));
+                                    "query",
+                                    "{\"nodeId\":\"probe-button\"}"),
+                            "probe-button");
+            final var f1 =
+                    rpc(
+                            endpoint.port(),
+                            endpoint.token(),
+                            "press",
+                            "{\"key\":\"F1\",\"window\":\"" + primaryWindow + "\"}");
+            assertTrue(f1.contains("\"acceleratorsFired\":1"), f1);
+            final var f1State =
+                    rpc(
+                            endpoint.port(),
+                            endpoint.token(),
+                            "assert",
+                            "{\"textExact\":\"F1 pressed\",\"present\":true}");
+            assertTrue(f1State.contains("\"ok\":true"), f1State);
             assertTrue(
                     rpc(
                                     endpoint.port(),
                                     endpoint.token(),
                                     "screenshot",
-                                    "{\"target\":\"node\",\"nodeId\":\"probe-button\",\"path\":\"target/failsafe-probe/node.png\"}")
+                                    Json.stringify(
+                                            Map.of(
+                                                    "target",
+                                                    "node",
+                                                    "nodeId",
+                                                    "probe-button",
+                                                    "path",
+                                                    out.resolve("node.png").toString())))
                             .contains("\"source\":"));
             assertTrue(Files.isRegularFile(out.resolve("node.png")));
             assertTrue(
@@ -546,7 +612,20 @@ final class FxDriverProbeIT {
                                     endpoint.port(),
                                     endpoint.token(),
                                     "screenshot",
-                                    "{\"target\":\"rect\",\"x\":0,\"y\":0,\"w\":120,\"h\":80,\"path\":\"target/failsafe-probe/rect.png\"}")
+                                    Json.stringify(
+                                            Map.of(
+                                                    "target",
+                                                    "rect",
+                                                    "x",
+                                                    0,
+                                                    "y",
+                                                    0,
+                                                    "w",
+                                                    120,
+                                                    "h",
+                                                    80,
+                                                    "path",
+                                                    out.resolve("rect.png").toString())))
                             .contains("\"target\":\"rect\""));
             assertTrue(Files.isRegularFile(out.resolve("rect.png")));
             assertTrue(rpc(endpoint.port(), endpoint.token(), "events", "{}").contains("events"));
@@ -623,7 +702,7 @@ final class FxDriverProbeIT {
 
     @Test
     void machineLaunchDrainsChildOutput() throws Exception {
-        final var out = Path.of("target", "failsafe-output-probe");
+        final var out = Path.of("target", "failsafe-output-probe").toAbsolutePath();
         Files.createDirectories(out);
         final var command = new ArrayList<String>();
         command.add(java());
@@ -834,14 +913,7 @@ final class FxDriverProbeIT {
     }
 
     private static String testClasspath() {
-        final var separator = System.getProperty("path.separator");
-        return Path.of("target", "test-classes") + separator + Path.of("target", "classes");
-    }
-
-    private static String javafxModules() {
-        return ModuleLayer.boot().findModule("jdk.jsobject").isPresent()
-                ? "javafx.controls,javafx.web"
-                : "javafx.controls,javafx.web,jdk.jsobject";
+        return Path.of("target", "test-classes").toString();
     }
 
     private static String javafxModulePath() {

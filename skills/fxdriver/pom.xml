@@ -9,8 +9,8 @@
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <maven.compiler.release>21</maven.compiler.release>
-    <javafx.version>21.0.7</javafx.version>
+    <maven.compiler.release>26</maven.compiler.release>
+    <javafx.version>26.0.2</javafx.version>
     <junit.jupiter.version>6.1.0</junit.jupiter.version>
     <maven.antrun.plugin.version>3.2.0</maven.antrun.plugin.version>
     <maven.compiler.plugin.version>4.0.0-beta-4</maven.compiler.plugin.version>
@@ -61,7 +61,7 @@
                   <version>[4.0.0-rc-5,)</version>
                 </requireMavenVersion>
                 <requireJavaVersion>
-                  <version>[21,)</version>
+                  <version>[26,)</version>
                 </requireJavaVersion>
                 <dependencyConvergence/>
               </rules>
@@ -88,11 +88,25 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <version>${maven.surefire.plugin.version}</version>
+        <configuration>
+          <systemPropertyVariables>
+            <glass.platform>Headless</glass.platform>
+            <java.awt.headless>true</java.awt.headless>
+            <prism.order>sw</prism.order>
+          </systemPropertyVariables>
+        </configuration>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-failsafe-plugin</artifactId>
         <version>${maven.failsafe.plugin.version}</version>
+        <configuration>
+          <systemPropertyVariables>
+            <glass.platform>Headless</glass.platform>
+            <java.awt.headless>true</java.awt.headless>
+            <prism.order>sw</prism.order>
+          </systemPropertyVariables>
+        </configuration>
         <executions>
           <execution>
             <goals>

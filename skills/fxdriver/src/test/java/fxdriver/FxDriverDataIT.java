@@ -45,17 +45,18 @@ final class FxDriverDataIT {
         assertOk("collapse", "{\"nodeId\":\"project-details\"}");
         assertOk("expand", "{\"nodeId\":\"project-details\"}");
         assertOk("scrollToIndex", "{\"nodeId\":\"recent-projects\",\"index\":2}");
-        assertOk("click", "{\"textExact\":\"Cygnus\"}");
+        assertOk("click", "{\"role\":\"BUTTON\",\"textExact\":\"Cygnus\"}");
         assertWait("Opened Cygnus");
     }
 
     @Test
     void reportsDuplicateAndMissDiagnostics() throws Exception {
         final var duplicate = call("click", "{\"textExact\":\"Open\"}");
-        assertTrue(duplicate.contains("\"ok\":true"), duplicate);
+        assertTrue(duplicate.contains("\"ok\":false"), duplicate);
+        assertTrue(duplicate.contains("AMBIGUOUS"), duplicate);
         assertTrue(duplicate.contains("\"matches\":2"), duplicate);
-        assertTrue(duplicate.contains("\"ambiguity\":"), duplicate);
-        assertEquals(3, occurrences(duplicate, "\"selectorPath\""), duplicate);
+        assertTrue(duplicate.contains("\"candidates\":"), duplicate);
+        assertEquals(2, occurrences(duplicate, "\"selectorPath\""), duplicate);
         assertTrue(duplicate.contains("button#open-primary"), duplicate);
 
         final var miss = call("click", "{\"nodeId\":\"missing-project\"}");
@@ -117,6 +118,7 @@ final class FxDriverDataIT {
         assertTrue(byText.contains("\"value\":\"Borealis\""), byText);
         assertTrue(byText.contains("\"ok\":true"), byText);
 
+        assertOk("selectIndex", "{\"nodeId\":\"project-tabs\",\"index\":1}");
         final var treeCell =
                 call(
                         "tableCell",
@@ -124,6 +126,7 @@ final class FxDriverDataIT {
                                 + "\"columnIndex\":0}");
         assertTrue(treeCell.contains("PRJ-102"), treeCell);
         assertTrue(treeCell.contains("\"ok\":true"), treeCell);
+        assertOk("selectIndex", "{\"nodeId\":\"project-tabs\",\"index\":0}");
 
         assertContains(
                 "tableCell",

@@ -1,16 +1,39 @@
 # Basic flow
 
-Replace `<pid>` with the target JavaFX JVM PID. Use the printed port/token from
-`attach`.
+Complete [runtime preflight](../references/runtime.md); use the installed JAR and resolved real Java executables.
 
-```sh
-./mvnw -q package
-java -jar @fxdriver.skill.jar@ attach <pid>
-export FXDRIVER_TOKEN=<printed-token>
-java -jar @fxdriver.skill.jar@ rpc <printed-port> ping '{}'
-java -jar @fxdriver.skill.jar@ rpc <printed-port> snapshot '{}' > target/basic-flow-snapshot.json
-java -jar @fxdriver.skill.jar@ rpc <printed-port> highlight '{"selector":"type=Button"}'
-java -jar @fxdriver.skill.jar@ screenshot \
-  <printed-port> target/basic-flow.png > target/basic-flow-summary.json
-java -jar @fxdriver.skill.jar@ rpc <printed-port> events '{}' > target/basic-flow-events.json
+Attach to an identified JavaFX process; record printed endpoint and token.
+Call `capabilities`, then use a persistent HTTP caller for these JSON-RPC requests.
+Check each reply before constructing a dependent plan.
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "query",
+  "params": { "selector": "role=TEXT_FIELD", "mode": "compact", "limit": 10 }
+}
 ```
+
+After resolving the unique input and expected completion state:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "run",
+  "params": {
+    "steps": [
+      { "op": "setText", "nodeId": "search", "value": "Ada" },
+      { "op": "wait", "regexText": "^1 result$", "timeoutMs": 3000 },
+      { "op": "assert", "nodeId": "open-result", "enabled": true }
+    ],
+    "returnState": "compact"
+  }
+}
+```
+
+IDs and completion text are app-specific examples, not universal selectors.
+If IDs are absent, discover safe text/role/handle alternatives; improve real source semantics when authorized.
+Read nested step outcomes and query exact semantic values when compact state omits them.
+Close only test-owned instances and verify exit.

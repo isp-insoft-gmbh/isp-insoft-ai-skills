@@ -6,11 +6,14 @@ import javafx.application.Application;
 import javafx.geometry.Insets;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonBar;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ChoiceBox;
 import javafx.scene.control.ColorPicker;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.DatePicker;
+import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.RadioButton;
@@ -88,6 +91,12 @@ public final class FxDriverFormsApp extends Application {
         final var export = new Button("Export");
         export.setId("settings-export");
         export.setDisable(true);
+        final var edit = new Button("Edit profile");
+        edit.setId("settings-dialog");
+        edit.setOnAction(ignored -> editProfile(stage, status, false));
+        final var failingEdit = new Button("Fail after dialog");
+        failingEdit.setId("settings-dialog-fail");
+        failingEdit.setOnAction(ignored -> editProfile(stage, status, true));
 
         name.addEventFilter(
                 KeyEvent.KEY_PRESSED,
@@ -134,6 +143,32 @@ public final class FxDriverFormsApp extends Application {
         row(profile, 2, "Password", password);
         row(profile, 3, "Notes", notes);
         profile.add(validation, 1, 4);
+        final var readOnly = new TextField("Read-only value");
+        readOnly.setId("profile-readonly");
+        readOnly.setEditable(false);
+        row(profile, 5, "Read-only", readOnly);
+        final var disabled = new TextField("Disabled value");
+        disabled.setId("disabled-input");
+        final var disabledParent = new VBox(disabled);
+        disabledParent.setDisable(true);
+        profile.add(disabledParent, 1, 6);
+        final var duplicates = new VBox();
+        for (var i = 0; i < 2; i++) {
+            final var duplicate = new Button("Duplicate action");
+            duplicate.setId("duplicate-action");
+            duplicate.setOnAction(ignored -> status.setText("Duplicate fired"));
+            duplicates.getChildren().add(duplicate);
+        }
+        profile.add(duplicates, 1, 7);
+        final var hiddenParent = new VBox();
+        hiddenParent.setVisible(false);
+        hiddenParent.setManaged(false);
+        for (var i = 0; i < 40; i++) {
+            final var hidden = new TextField("Hidden ancestor noise");
+            hidden.setId("hidden-input-" + i);
+            hiddenParent.getChildren().add(hidden);
+        }
+        profile.add(hiddenParent, 1, 8);
 
         final var behavior = section("Behavior");
         behavior.add(notifications, 0, 1, 2, 1);
@@ -155,7 +190,12 @@ public final class FxDriverFormsApp extends Application {
         scroll.setFitToWidth(true);
 
         final var root =
-                new BorderPane(scroll, new ToolBar(save, reset, export), null, status, null);
+                new BorderPane(
+                        scroll,
+                        new ToolBar(save, reset, export, edit, failingEdit),
+                        null,
+                        status,
+                        null);
         final var scene = new Scene(root, 680, 760);
         scene.getStylesheets()
                 .add(
@@ -166,6 +206,26 @@ public final class FxDriverFormsApp extends Application {
         stage.setTitle("Settings Editor");
         stage.setScene(scene);
         stage.show();
+    }
+
+    private static void editProfile(final Stage owner, final Label status, final boolean fail) {
+        final var dialog = new Dialog<String>();
+        dialog.initOwner(owner);
+        dialog.setTitle("Edit profile dialog");
+        final var input = new TextField("Dialog initial value");
+        input.setId("profile-name");
+        final var label = new Label("Dialog name");
+        label.setLabelFor(input);
+        dialog.getDialogPane().setContent(new VBox(8, label, input));
+        final var save = new ButtonType("Save", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(save, ButtonType.CANCEL);
+        dialog.getDialogPane().lookupButton(save).setId("dialog-save");
+        dialog.setResultConverter(button -> button == save ? input.getText() : null);
+        final var value = dialog.showAndWait();
+        if (fail) {
+            throw new IllegalStateException("Fixture late failure");
+        }
+        status.setText(value.map(text -> "Dialog saved: " + text).orElse("Dialog cancelled"));
     }
 
     private static GridPane section(final String title) {
@@ -180,7 +240,9 @@ public final class FxDriverFormsApp extends Application {
 
     private static void row(
             final GridPane grid, final int row, final String label, final javafx.scene.Node value) {
-        grid.add(new Label(label), 0, row);
+        final var caption = new Label(label);
+        caption.setLabelFor(value);
+        grid.add(caption, 0, row);
         grid.add(value, 1, row);
     }
 
