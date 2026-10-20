@@ -29,6 +29,8 @@ function runCli(cli, args, extraEnv = {}, cwd = ROOT, input) {
     timeout: 15_000,
     env: {
       ...process.env,
+      FORCE_COLOR: '0',
+      NO_COLOR: undefined,
       LOCALAPPDATA: STATE_ROOT,
       XDG_STATE_HOME: STATE_ROOT,
       HOME: STATE_ROOT,
