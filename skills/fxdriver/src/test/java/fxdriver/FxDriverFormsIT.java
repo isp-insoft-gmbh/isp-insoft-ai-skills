@@ -38,6 +38,37 @@ final class FxDriverFormsIT {
     }
 
     @Test
+    void newerSiblingModalRemainsUsableWhileBackgroundStaysBlocked() throws Exception {
+        final var outer = call("fire", "{\"nodeId\":\"sibling-dialogs\"}");
+        assertEquals("pending", Json.string(outer, "completion"), outer);
+        final var inner = call("fire", "{\"nodeId\":\"open-sibling\"}");
+        assertEquals("pending", Json.string(inner, "completion"), inner);
+        assertContains("fire", "{\"nodeId\":\"outer-close\"}", "BLOCKED");
+        assertContains("setText", "{\"nodeId\":\"profile-name\",\"value\":\"Unsafe\"}", "BLOCKED");
+        assertContains("key", "{\"nodeId\":\"profile-name\",\"key\":\"ENTER\"}", "BLOCKED");
+        assertOk("fire", "{\"nodeId\":\"sibling-ok\"}");
+        assertEquals(
+                "completed",
+                Json.string(
+                        call(
+                                "actionStatus",
+                                "{\"actionId\":" + Json.intValue(inner, "actionId", -1) + "}"),
+                        "completion"));
+        assertContains("fire", "{\"nodeId\":\"settings-save\"}", "BLOCKED");
+        assertOk("fire", "{\"nodeId\":\"outer-close\"}");
+        assertEquals(
+                "completed",
+                Json.string(
+                        call(
+                                "actionStatus",
+                                "{\"actionId\":" + Json.intValue(outer, "actionId", -1) + "}"),
+                        "completion"));
+        assertOk("assert", "{\"nodeId\":\"profile-name\",\"value\":\"Grace Hopper\"}");
+        assertOk("fire", "{\"nodeId\":\"settings-save\"}");
+        assertWait("Saved settings for Grace Hopper");
+    }
+
+    @Test
     void editsAndSavesSettings() throws Exception {
         assertOk("setText", "{\"nodeId\":\"profile-name\",\"value\":\"Grace\"}");
         assertOk("type", "{\"nodeId\":\"profile-name\",\"value\":\" Hopper\",\"replace\":false}");

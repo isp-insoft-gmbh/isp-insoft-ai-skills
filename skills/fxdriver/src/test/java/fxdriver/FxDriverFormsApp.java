@@ -189,10 +189,36 @@ public final class FxDriverFormsApp extends Application {
         final var scroll = new ScrollPane(page);
         scroll.setFitToWidth(true);
 
+        final var siblings = new Button("Sibling dialogs");
+        siblings.setId("sibling-dialogs");
+        siblings.setOnAction(
+                ignored -> {
+                    final var outer = new Dialog<Void>();
+                    outer.initOwner(stage);
+                    outer.setTitle("Outer sibling");
+                    outer.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+                    outer.getDialogPane().lookupButton(ButtonType.CLOSE).setId("outer-close");
+                    final var open = new Button("Open sibling");
+                    open.setId("open-sibling");
+                    open.setOnAction(
+                            event -> {
+                                final var inner = new Dialog<Void>();
+                                inner.initOwner(stage);
+                                inner.setTitle("Newer sibling");
+                                inner.getDialogPane().getButtonTypes().add(ButtonType.OK);
+                                inner.getDialogPane()
+                                        .lookupButton(ButtonType.OK)
+                                        .setId("sibling-ok");
+                                inner.showAndWait();
+                            });
+                    outer.getDialogPane().setContent(open);
+                    outer.showAndWait();
+                });
+
         final var root =
                 new BorderPane(
                         scroll,
-                        new ToolBar(save, reset, export, edit, failingEdit),
+                        new ToolBar(save, reset, export, edit, failingEdit, siblings),
                         null,
                         status,
                         null);

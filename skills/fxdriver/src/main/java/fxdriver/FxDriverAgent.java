@@ -4924,16 +4924,24 @@ public final class FxDriverAgent {
 
     private static Window modalBlocker(final Window target) {
         if (target == null) return null;
-        for (final var window : orderedWindows()) {
+        Window effectiveTarget = target;
+        while (effectiveTarget instanceof PopupWindow popup) {
+            effectiveTarget = popup.getOwnerWindow();
+        }
+        // JavaFX appends on show and removes on hide. Older modals cannot block a newer modal
+        // branch.
+        final var windows = new ArrayList<>(Window.getWindows());
+        Collections.reverse(windows);
+        for (final var window : windows) {
             if (!(window instanceof Stage modal)
                     || !modal.isShowing()
                     || modal.getModality() == javafx.stage.Modality.NONE
-                    || modal == target
-                    || ownedBy(target, modal)) continue;
+                    || (modal.getModality() == javafx.stage.Modality.WINDOW_MODAL
+                            && modal.getOwner() == null)) continue;
+            if (modal == effectiveTarget || ownedBy(effectiveTarget, modal)) return null;
             if (modal.getModality() == javafx.stage.Modality.APPLICATION_MODAL) return modal;
             for (Window owner = ownerOf(modal); owner != null; owner = ownerOf(owner)) {
-                if (owner == target || (target instanceof PopupWindow && ownedBy(target, owner)))
-                    return modal;
+                if (owner == effectiveTarget) return modal;
             }
         }
         return null;
